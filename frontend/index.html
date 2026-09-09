@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>AutoBus — Autonomous B2B Negotiation Arena</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
+<style>
+  body{background:#07070b;color:#e8e8f0;font-family:Inter,ui-sans-serif,system-ui,sans-serif}
+  ::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-track{background:#0d0d14}::-webkit-scrollbar-thumb{background:#343440;border-radius:999px}
+  .glass{background:rgba(255,255,255,.035);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.08)}
+  .soft{background:rgba(255,255,255,.025)}
+  .badge-offer{background:#1d4ed8;color:#bfdbfe}.badge-counter{background:#6b21a8;color:#e9d5ff}.badge-accept{background:#065f46;color:#a7f3d0}.badge-walk_away{background:#7f1d1d;color:#fca5a5}
+  .badge-allowed{background:#065f46;color:#a7f3d0}.badge-blocked{background:#7f1d1d;color:#fca5a5}
+  .pulse{animation:pulse 1.6s infinite}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+  input,select{background:#0d1018;border:1px solid #303747;color:#e8e8f0;border-radius:7px;padding:7px 10px;width:100%;outline:none}
+  input:focus,select:focus{border-color:#6366f1}
+  label{font-size:.7rem;color:#9ca3af;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em}
+  .btn{border-radius:8px;padding:9px 16px;font-weight:700;cursor:pointer;transition:all .18s}.btn:disabled{opacity:.5;cursor:not-allowed}
+  .btn-primary{background:#4f46e5;color:white}.btn-primary:hover{background:#4338ca}.btn-secondary{background:#151922;color:#e8e8f0;border:1px solid #303747}.btn-secondary:hover{background:#202633}
+  .kpi{background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.025));border:1px solid rgba(255,255,255,.08)}
+  .simple-card{background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.02));border:1px solid rgba(255,255,255,.08)}
+  .step-dot{width:28px;height:28px;display:grid;place-items:center;border-radius:999px;background:#1d2330;color:#c7d2fe;font-size:12px;font-weight:800;flex:none}
+  .friendly-input{font-size:.95rem !important;padding:11px 12px !important;border-radius:10px !important}
+  details>summary{list-style:none;cursor:pointer}
+  details>summary::-webkit-details-marker{display:none}
+</style>
+</head>
+<body><div id="root"><div style="min-height:100vh;display:grid;place-items:center;padding:24px"><div style="max-width:720px;width:100%;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:18px;padding:24px"><div style="font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#a5b4fc;font-weight:700">AUTOBUS</div><h1 style="margin:8px 0 4px;font-size:28px">Loading negotiation arena…</h1><p style="margin:0;color:#9ca3af;font-size:14px">Initializing the governed buyer/supplier workspace.</p></div></div></div>
+<script>const { useState, useEffect } = React;
+const { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend, ResponsiveContainer, BarChart, Bar } = window.Recharts || {};
+const API = (window.AUTOBUS_API && window.AUTOBUS_API.replace(/\/$/, "")) || ((window.location.protocol === "http:" || window.location.protocol === "https:") ? window.location.origin : "http://localhost:8000");
+const BUYER_DEF = { price: { target: 95000, maximum: 115000 }, delivery: { target_days: 25, maximum_days: 40 }, payment: { preferred_days: 60, minimum_days: 30 }, sla: { minimum_uptime: 99, minimum_penalty: 2, maximum_penalty: 7 }, batna: "Existing supplier at ₹118K", max_rounds: 8 };
+const SUPP_DEF = { price: { target: 125000, minimum: 105000 }, delivery: { target_days: 35, maximum_days: 50 }, payment: { preferred_days: 30, minimum_days: 15 }, sla: { minimum_uptime: 98, minimum_penalty: 1, maximum_penalty: 6 }, batna: "Other customer offers ₹130K", max_rounds: 8 };
+const RFQ_DEFS = [
+    { name: "Northstar Components", policy: SUPP_DEF },
+    { name: "Vertex Industrial", policy: { ...SUPP_DEF, price: { target: 118000, minimum: 103000 }, delivery: { target_days: 31, maximum_days: 44 } } },
+    { name: "Atlas Motion", policy: { ...SUPP_DEF, price: { target: 121000, minimum: 108000 }, payment: { preferred_days: 45, minimum_days: 20 }, sla: { minimum_uptime: 99, minimum_penalty: 1, maximum_penalty: 5 } } }
+];
+function Badge({ text, type }) { const cls = `badge-${(type || text || "").toLowerCase().replace(/ /g, "_")}`; return React.createElement("span", { className: `text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide ${cls}` }, text); }
+function Stat({ label, value }) { return React.createElement("div", { className: "flex justify-between gap-3 py-1 border-b border-white/5" },
+    React.createElement("span", { className: "text-[11px] text-gray-500" }, label),
+    React.createElement("span", { className: "text-xs font-semibold text-gray-200" }, value)); }
+function UtilityBar({ value, label }) { return React.createElement("div", null,
+    React.createElement("div", { className: "flex justify-between text-[11px] mb-1" },
+        React.createElement("span", { className: "text-gray-500" }, label),
+        React.createElement("span", { className: "font-semibold" },
+            Math.round(value * 100),
+            "%")),
+    React.createElement("div", { className: "h-1.5 rounded-full bg-white/10 overflow-hidden" },
+        React.createElement("div", { className: "h-full bg-indigo-500 rounded-full", style: { width: `${Math.max(0, Math.min(100, value * 100))}%` } }))); }
+function PolicyForm({ label, defaults, onChange }) {
+    const [d, setD] = useState(defaults);
+    useEffect(() => onChange(d), [d]);
+    const up = (path, val) => setD(prev => { const n = { ...prev }; const parts = path.split("."); let cur = n; for (let i = 0; i < parts.length - 1; i++) {
+        cur[parts[i]] = { ...cur[parts[i]] };
+        cur = cur[parts[i]];
+    } cur[parts.at(-1)] = isNaN(val) ? val : +val; return n; });
+    const F = ({ p, l, min, max, step = 1 }) => { var _a; return React.createElement("div", null,
+        React.createElement("label", null, l),
+        React.createElement("input", { type: "number", min: min, max: max, step: step, value: (_a = p.split('.').reduce((o, k) => o === null || o === void 0 ? void 0 : o[k], d)) !== null && _a !== void 0 ? _a : "", onChange: e => up(p, e.target.value) })); };
+    const buyer = label.toLowerCase().includes('buyer');
+    return React.createElement("div", { className: "glass rounded-2xl p-5" },
+        React.createElement("div", { className: "flex items-center justify-between mb-4" },
+            React.createElement("div", null,
+                React.createElement("h3", { className: "font-black text-sm uppercase tracking-widest" }, label),
+                React.createElement("p", { className: "text-[10px] text-gray-500 mt-1" }, "\uD83D\uDD12 PRIVATE BUSINESS RULES \u2014 hidden from the other agent")),
+            React.createElement("span", { className: "text-[10px] px-2 py-1 rounded-full bg-white/5 text-gray-400" },
+                buyer ? 'BUYER' : 'SUPPLIER',
+                " CONTROL")),
+        React.createElement("div", { className: "grid grid-cols-2 gap-3" },
+            React.createElement(F, { p: "price.target", l: "Target Price (\u20B9)", min: 1 }),
+            React.createElement(F, { p: buyer ? "price.maximum" : "price.minimum", l: buyer ? "Max Price (₹)" : "Min Price (₹)", min: 1 }),
+            React.createElement(F, { p: "delivery.target_days", l: "Delivery Target", min: 1 }),
+            React.createElement(F, { p: "delivery.maximum_days", l: "Max Delivery", min: 1 }),
+            React.createElement(F, { p: "payment.preferred_days", l: "Preferred Net", min: 1 }),
+            React.createElement(F, { p: "payment.minimum_days", l: "Min Net", min: 1 }),
+            React.createElement(F, { p: "sla.minimum_uptime", l: "Min Uptime %", min: 95, max: 100, step: 0.5 }),
+            React.createElement(F, { p: "sla.maximum_penalty", l: "Max Penalty %", min: 0, step: 0.5 }),
+            React.createElement(F, { p: "max_rounds", l: "Max Rounds", min: 1, max: 20 }),
+            React.createElement(F, { p: "sla.minimum_penalty", l: "Min Penalty %", min: 0, step: 0.5 })),
+        React.createElement("div", { className: "mt-3" },
+            React.createElement("label", null, "BATNA"),
+            React.createElement("input", { value: d.batna || "", onChange: e => up("batna", e.target.value) })));
+}
+function AgentPanel({ name, role, policy, latest, metrics }) {
+    const buyer = role === 'buyer';
+    return React.createElement("div", { className: "glass rounded-2xl p-5" },
+        React.createElement("div", { className: "flex items-center justify-between mb-4" },
+            React.createElement("div", { className: "flex items-center gap-3" },
+                React.createElement("div", { className: "text-2xl" }, buyer ? '🏢' : '🏭'),
+                React.createElement("div", null,
+                    React.createElement("h3", { className: "font-black" }, name),
+                    React.createElement("p", { className: "text-[10px] uppercase tracking-widest text-gray-500" },
+                        role,
+                        " agent \u2022 isolated policy"))),
+            React.createElement("span", { className: "text-[10px] px-2 py-1 rounded-full bg-white/5 text-gray-400" }, "\uD83D\uDD12 PRIVATE")),
+        React.createElement("div", { className: "space-y-1 mb-4" },
+            React.createElement(Stat, { label: "Target Price", value: `₹${Number(policy.price.target).toLocaleString()}` }),
+            React.createElement(Stat, { label: buyer ? 'Max Price' : 'Min Price', value: `₹${Number(buyer ? policy.price.maximum : policy.price.minimum).toLocaleString()}` }),
+            React.createElement(Stat, { label: "Delivery", value: `${policy.delivery.target_days}d target / ${policy.delivery.maximum_days}d max` }),
+            React.createElement(Stat, { label: "Payment", value: `Net ${policy.payment.preferred_days} pref / ${policy.payment.minimum_days} min` }),
+            React.createElement(Stat, { label: "SLA", value: `${policy.sla.minimum_uptime}% uptime · ${policy.sla.maximum_penalty}% max pen` })),
+        metrics && React.createElement("div", { className: "mb-4" },
+            React.createElement(UtilityBar, { label: "Current utility", value: metrics })),
+        latest && React.createElement("div", { className: "soft rounded-xl p-4 border border-white/5" },
+            React.createElement("div", { className: "flex items-center justify-between mb-2" },
+                React.createElement("span", { className: "text-[10px] text-gray-500 uppercase tracking-widest" }, "Latest proposal"),
+                React.createElement(Badge, { text: latest.action, type: latest.action })),
+            React.createElement("div", { className: "text-2xl font-black" },
+                "\u20B9",
+                Number(latest.price).toLocaleString()),
+            React.createElement("div", { className: "grid grid-cols-2 gap-1 text-[11px] text-gray-300 mt-2" },
+                React.createElement("span", null,
+                    "\uD83D\uDCE6 ",
+                    latest.delivery_days,
+                    "d"),
+                React.createElement("span", null,
+                    "\uD83D\uDCB3 Net ",
+                    latest.payment_days),
+                React.createElement("span", null,
+                    "\u26A1 ",
+                    latest.sla_uptime,
+                    "%"),
+                React.createElement("span", null,
+                    "\u26A0 ",
+                    latest.sla_penalty,
+                    "% pen")),
+            React.createElement("p", { className: "text-[10px] text-gray-500 mt-2" }, latest.rationale || "No rationale provided")));
+}
+function NegotiationChart({ rounds }) {
+    if (!(rounds === null || rounds === void 0 ? void 0 : rounds.length))
+        return React.createElement("div", { className: "h-56 grid place-items-center text-sm text-gray-600" }, "Awaiting negotiation data\u2026");
+    const data = rounds.map(r => { var _a, _b; return ({ round: r.round, buyer: +r.buyer.price.toFixed(2), supplier: +r.supplier.price.toFixed(2), gap: +r.gap.toFixed(4), buyerU: ((_a = r.metrics) === null || _a === void 0 ? void 0 : _a.buyer_utility) || 0, supplierU: ((_b = r.metrics) === null || _b === void 0 ? void 0 : _b.supplier_utility) || 0 }); });
+    return React.createElement("div", { className: "grid lg:grid-cols-2 gap-5" },
+        React.createElement("div", null,
+            React.createElement("p", { className: "text-xs text-gray-400 mb-2" }, "Price convergence"),
+            React.createElement(ResponsiveContainer, { width: "100%", height: 220 },
+                React.createElement(LineChart, { data: data },
+                    React.createElement(CartesianGrid, { strokeDasharray: "3 3", stroke: "#1d2330" }),
+                    React.createElement(XAxis, { dataKey: "round", stroke: "#667085" }),
+                    React.createElement(YAxis, { stroke: "#667085", tickFormatter: v => `₹${Math.round(v / 1000)}k` }),
+                    React.createElement(Tooltip, { contentStyle: { background: '#0d1119', border: '1px solid #303747', borderRadius: 8, fontSize: 11 } }),
+                    React.createElement(Legend, { wrapperStyle: { fontSize: 11 } }),
+                    React.createElement(Line, { dataKey: "buyer", name: "Buyer", stroke: "#818cf8", strokeWidth: 2.5, dot: { r: 3 } }),
+                    React.createElement(Line, { dataKey: "supplier", name: "Supplier", stroke: "#f472b6", strokeWidth: 2.5, dot: { r: 3 } })))),
+        React.createElement("div", null,
+            React.createElement("p", { className: "text-xs text-gray-400 mb-2" }, "Utility convergence"),
+            React.createElement(ResponsiveContainer, { width: "100%", height: 220 },
+                React.createElement(LineChart, { data: data },
+                    React.createElement(CartesianGrid, { strokeDasharray: "3 3", stroke: "#1d2330" }),
+                    React.createElement(XAxis, { dataKey: "round", stroke: "#667085" }),
+                    React.createElement(YAxis, { domain: [0, 1], tickFormatter: v => `${Math.round(v * 100)}%`, stroke: "#667085" }),
+                    React.createElement(Tooltip, { contentStyle: { background: '#0d1119', border: '1px solid #303747', borderRadius: 8, fontSize: 11 } }),
+                    React.createElement(Legend, { wrapperStyle: { fontSize: 11 } }),
+                    React.createElement(Line, { dataKey: "buyerU", name: "Buyer utility", stroke: "#60a5fa", strokeWidth: 2 }),
+                    React.createElement(Line, { dataKey: "supplierU", name: "Supplier utility", stroke: "#34d399", strokeWidth: 2 })))));
+}
+function Rounds({ rounds }) { return React.createElement("div", { className: "overflow-auto max-h-72" },
+    React.createElement("table", { className: "w-full text-xs" },
+        React.createElement("thead", null,
+            React.createElement("tr", { className: "text-gray-500 border-b border-white/10" },
+                React.createElement("th", { className: "text-left py-2" }, "Round"),
+                React.createElement("th", { className: "text-right" }, "Buyer"),
+                React.createElement("th", { className: "text-right" }, "Supplier"),
+                React.createElement("th", { className: "text-right" }, "Gap"),
+                React.createElement("th", { className: "text-center" }, "Actions"))),
+        React.createElement("tbody", null, (rounds || []).map(r => React.createElement("tr", { key: r.round, className: "border-b border-white/5" },
+            React.createElement("td", { className: "py-2 font-mono" },
+                "R",
+                r.round),
+            React.createElement("td", { className: "text-right text-indigo-300" },
+                "\u20B9",
+                r.buyer.price.toLocaleString()),
+            React.createElement("td", { className: "text-right text-pink-300" },
+                "\u20B9",
+                r.supplier.price.toLocaleString()),
+            React.createElement("td", { className: "text-right text-emerald-300" }, r.gap.toFixed(3)),
+            React.createElement("td", { className: "text-center" },
+                React.createElement(Badge, { text: r.buyer.action, type: r.buyer.action }),
+                " ",
+                React.createElement(Badge, { text: r.supplier.action, type: r.supplier.action }))))))); }
+function Audit({ events }) { return React.createElement("div", { className: "space-y-1 overflow-auto max-h-72" }, (events || []).map((e, i) => { var _a, _b; const blocked = e.event_type === 'proposal_blocked'; const ok = e.status === 'allowed' || e.status === 'success'; return React.createElement("div", { key: i, className: `p-2.5 rounded-xl text-xs border ${blocked ? 'bg-red-950/30 border-red-900/40' : ok ? 'bg-emerald-950/20 border-emerald-900/30' : 'bg-white/5 border-white/5'}` },
+    React.createElement("div", { className: "flex items-center justify-between gap-3" },
+        React.createElement("span", { className: "font-semibold" },
+            blocked ? '🚫' : e.event_type === 'agreement_reached' ? '✅' : '📋',
+            " ",
+            e.event_type.replaceAll('_', ' ')),
+        React.createElement("span", { className: "text-gray-600" },
+            e.round_number ? `R${e.round_number} · ` : '',
+            new Date(e.timestamp).toLocaleTimeString())),
+    React.createElement("div", { className: "text-gray-500 mt-1" },
+        e.actor,
+        " \u00B7 ",
+        e.status),
+    blocked && ((_b = (_a = e.details) === null || _a === void 0 ? void 0 : _a.violations) === null || _b === void 0 ? void 0 : _b[0]) && React.createElement("div", { className: "text-red-300 mt-1" }, e.details.violations[0])); })); }
+function ContractCard({ contract, negId }) { if (!contract)
+    return null; const download = (url, name) => { const a = document.createElement('a'); a.href = url; a.download = name || 'contract'; a.click(); }; return React.createElement("div", { className: "glass rounded-2xl p-6 border border-emerald-500/20 bg-emerald-950/10" },
+    React.createElement("div", { className: "flex flex-wrap items-center justify-between gap-3 mb-4" },
+        React.createElement("div", null,
+            React.createElement("p", { className: "text-[10px] uppercase tracking-widest text-emerald-300" }, "\u2705 Executable agreement"),
+            React.createElement("h3", { className: "text-xl font-black" }, contract.contract_id)),
+        React.createElement("div", { className: "flex gap-2" },
+            React.createElement("button", { className: "btn btn-secondary text-xs", onClick: () => download(`${API}/api/negotiations/${negId}/pdf`, `${contract.contract_id}.pdf`) }, "\u2B07 PDF"),
+            React.createElement("button", { className: "btn btn-secondary text-xs", onClick: () => download(URL.createObjectURL(new Blob([JSON.stringify(contract, null, 2)], { type: 'application/json' })), `${contract.contract_id}.json`) }, "\u2B07 JSON"))),
+    React.createElement("div", { className: "grid grid-cols-2 md:grid-cols-4 gap-3" }, [["Buyer", contract.buyer_name], ["Supplier", contract.supplier_name], ["Price", `₹${Number(contract.unit_price).toLocaleString()}`], ["Delivery", `${contract.delivery_days} days`], ["Payment", `Net ${contract.payment_days}`], ["SLA", `${contract.sla.minimum_uptime}%`], ["Penalty", `${contract.sla.penalty_percent}%`], ["Rounds", contract.negotiation_rounds]].map(([l, v]) => React.createElement("div", { key: l, className: "soft rounded-xl p-3" },
+        React.createElement("div", { className: "text-[10px] text-gray-500 uppercase tracking-wider" }, l),
+        React.createElement("div", { className: "font-bold text-sm mt-1" }, v))))); }
+function SecurityPanel({ request, setSecurity }) { const [busy, setBusy] = useState(false); const run = async () => { setBusy(true); try {
+    const r = await fetch(`${API}/api/stress-test`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request) });
+    setSecurity(await r.json());
+}
+finally {
+    setBusy(false);
+} }; return React.createElement("div", { className: "glass rounded-2xl p-6" },
+    React.createElement("div", { className: "flex flex-wrap items-center justify-between gap-3 mb-4" },
+        React.createElement("div", null,
+            React.createElement("p", { className: "text-[10px] uppercase tracking-widest text-red-300" }, "\uD83D\uDEE1 Adversarial Guardrail Lab"),
+            React.createElement("h3", { className: "text-lg font-black" }, "Attack the negotiation"),
+            React.createElement("p", { className: "text-xs text-gray-500 mt-1" }, "Deliberately inject out-of-policy proposals and prove they are blocked.")),
+        React.createElement("button", { className: "btn btn-secondary", onClick: run, disabled: busy }, busy ? 'Running attacks…' : '⚔ Run 6 attacks')),
+    security ? React.createElement(React.Fragment, null,
+        React.createElement("div", { className: "grid grid-cols-3 gap-3 mb-4" },
+            React.createElement("div", { className: "kpi rounded-xl p-4" },
+                React.createElement("div", { className: "text-[10px] text-gray-500" }, "ATTEMPTS"),
+                React.createElement("div", { className: "text-2xl font-black mt-1" }, security.total)),
+            React.createElement("div", { className: "kpi rounded-xl p-4" },
+                React.createElement("div", { className: "text-[10px] text-gray-500" }, "BLOCKED"),
+                React.createElement("div", { className: "text-2xl font-black text-emerald-300 mt-1" }, security.blocked)),
+            React.createElement("div", { className: "kpi rounded-xl p-4" },
+                React.createElement("div", { className: "text-[10px] text-gray-500" }, "ENFORCEMENT"),
+                React.createElement("div", { className: "text-2xl font-black text-emerald-300 mt-1" },
+                    Math.round(security.pass_rate * 100),
+                    "%"))),
+        React.createElement("div", { className: "space-y-1" }, security.results.map(x => React.createElement("div", { key: x.name, className: "flex items-center justify-between p-2 rounded-lg bg-white/5" },
+            React.createElement("span", { className: "text-xs capitalize" }, x.name.replaceAll('_', ' ')),
+            React.createElement("span", { className: "text-emerald-300 text-xs font-bold" }, x.blocked ? 'BLOCKED' : 'FAILED TO BLOCK'))))) : React.createElement("div", { className: "p-8 text-center text-gray-600 text-sm" }, "The red-team result will appear here.")); }
+function ParetoPanel({ pareto }) { if (!(pareto === null || pareto === void 0 ? void 0 : pareto.length))
+    return null; return React.createElement("div", { className: "glass rounded-2xl p-6" },
+    React.createElement("div", { className: "mb-4" },
+        React.createElement("p", { className: "text-[10px] uppercase tracking-widest text-cyan-300" }, "\uD83D\uDCD0 Pareto frontier"),
+        React.createElement("h3", { className: "text-lg font-black" }, "Why this deal is efficient"),
+        React.createElement("p", { className: "text-xs text-gray-500 mt-1" }, "Each historical package is scored for both parties; dominated deals are eliminated.")),
+    React.createElement("div", { className: "overflow-auto" },
+        React.createElement("table", { className: "w-full text-xs" },
+            React.createElement("thead", null,
+                React.createElement("tr", { className: "text-gray-500 border-b border-white/10" },
+                    React.createElement("th", { className: "text-left py-2" }, "Package"),
+                    React.createElement("th", null, "Buyer utility"),
+                    React.createElement("th", null, "Supplier utility"),
+                    React.createElement("th", null, "Joint"),
+                    React.createElement("th", null, "Status"))),
+            React.createElement("tbody", null, pareto.map(p => React.createElement("tr", { key: p.index, className: "border-b border-white/5" },
+                React.createElement("td", { className: "py-2" },
+                    "#",
+                    p.index + 1,
+                    " \u00B7 \u20B9",
+                    Number(p.proposal.price).toLocaleString()),
+                React.createElement("td", { className: "text-center" },
+                    Math.round(p.buyer_utility * 100),
+                    "%"),
+                React.createElement("td", { className: "text-center" },
+                    Math.round(p.supplier_utility * 100),
+                    "%"),
+                React.createElement("td", { className: "text-center font-bold" },
+                    Math.round(p.joint_utility * 100),
+                    "%"),
+                React.createElement("td", { className: "text-center" }, p.pareto_efficient ? React.createElement("span", { className: "text-emerald-300 font-bold" }, "PARETO") : React.createElement("span", { className: "text-gray-600" }, "dominated")))))))); }
+function RFQPanel({ payload }) { const [busy, setBusy] = useState(false), [rfq, setRfq] = useState(null); const run = async () => { setBusy(true); try {
+    const r = await fetch(`${API}/api/rfq`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...payload, suppliers: RFQ_DEFS }) });
+    setRfq(await r.json());
+}
+finally {
+    setBusy(false);
+} }; return React.createElement("div", { className: "glass rounded-2xl p-6" },
+    React.createElement("div", { className: "flex flex-wrap items-center justify-between gap-3 mb-4" },
+        React.createElement("div", null,
+            React.createElement("p", { className: "text-[10px] uppercase tracking-widest text-yellow-300" }, "\uD83C\uDFC1 Multi-vendor RFQ"),
+            React.createElement("h3", { className: "text-lg font-black" }, "One buyer. Three autonomous suppliers."),
+            React.createElement("p", { className: "text-xs text-gray-500 mt-1" }, "Run the same buyer envelope against three supplier policies and rank feasible deals.")),
+        React.createElement("button", { className: "btn btn-primary", onClick: run, disabled: busy }, busy ? 'Running RFQ…' : '▶ Run 3-supplier RFQ')),
+    React.createElement("div", { className: "grid md:grid-cols-3 gap-3 mb-4" }, RFQ_DEFS.map((s, i) => React.createElement("div", { key: s.name, className: "soft rounded-xl p-4" },
+        React.createElement("div", { className: "text-[10px] text-gray-500" },
+            "SUPPLIER ",
+            i + 1),
+        React.createElement("div", { className: "font-bold mt-1" }, s.name),
+        React.createElement("div", { className: "text-xs text-gray-400 mt-2" },
+            "Floor \u20B9",
+            Number(s.policy.price.minimum).toLocaleString(),
+            " \u00B7 ",
+            s.policy.delivery.maximum_days,
+            "d max \u00B7 ",
+            s.policy.sla.minimum_uptime,
+            "% SLA")))),
+    rfq && React.createElement("div", { className: "space-y-1" }, rfq.results.map((x, i) => { var _a, _b, _c; return React.createElement("div", { key: x.supplier, className: `p-3 rounded-xl border ${i === 0 ? 'border-emerald-500/30 bg-emerald-950/10' : 'border-white/5 bg-white/5'}` },
+        React.createElement("div", { className: "flex items-center justify-between" },
+            React.createElement("div", { className: "flex items-center gap-2" },
+                React.createElement("span", { className: "font-semibold text-sm" },
+                    "#",
+                    i + 1,
+                    " ",
+                    x.supplier),
+                i === 0 && React.createElement("span", { className: "text-[9px] px-2 py-1 rounded-full bg-emerald-950 text-emerald-300" }, "RECOMMENDED")),
+            React.createElement("span", { className: "text-xs text-gray-500" },
+                x.rounds,
+                " rounds")),
+        React.createElement("div", { className: "grid grid-cols-4 gap-2 mt-2 text-xs" },
+            React.createElement("span", null,
+                "Status ",
+                React.createElement("b", null, x.status)),
+            React.createElement("span", null,
+                "Buyer ",
+                React.createElement("b", null,
+                    Math.round((((_a = x.score) === null || _a === void 0 ? void 0 : _a.buyer_utility) || 0) * 100),
+                    "%")),
+            React.createElement("span", null,
+                "Supplier ",
+                React.createElement("b", null,
+                    Math.round((((_b = x.score) === null || _b === void 0 ? void 0 : _b.supplier_utility) || 0) * 100),
+                    "%")),
+            React.createElement("span", null,
+                "Joint ",
+                React.createElement("b", { className: "text-emerald-300" },
+                    Math.round((((_c = x.score) === null || _c === void 0 ? void 0 : _c.joint_utility) || 0) * 100),
+                    "%")))); }))); }
+function LyzrControlPlane({ status }) {
+    const [arch, setArch] = useState(null), [evidence, setEvidence] = useState(null);
+    useEffect(() => { Promise.all([fetch(`${API}/api/architecture`).then(r => r.json()), fetch(`${API}/api/lyzr/evidence`).then(r => r.json())]).then(([a, e]) => { setArch(a); setEvidence(e); }).catch(() => { }); }, []);
+    const sdk = evidence === null || evidence === void 0 ? void 0 : evidence.sdk, agents = evidence === null || evidence === void 0 ? void 0 : evidence.studio_agents;
+    return React.createElement("section", { className: "glass rounded-2xl p-5" },
+        React.createElement("div", { className: "flex flex-wrap items-center justify-between gap-3 mb-4" },
+            React.createElement("div", null,
+                React.createElement("p", { className: "text-[10px] uppercase tracking-widest text-indigo-300" }, "\u25C8 POWERED BY LYZR"),
+                React.createElement("h2", { className: "text-lg font-black" }, "Two agents. One governed negotiation."),
+                React.createElement("p", { className: "text-xs text-gray-500 mt-1" }, "Agents can negotiate, but they never get direct authority to break policy or sign the contract.")),
+            React.createElement("div", { className: "flex gap-2 flex-wrap" },
+                React.createElement("span", { className: `text-[10px] px-2 py-1 rounded-full ${(sdk === null || sdk === void 0 ? void 0 : sdk.installed) && (sdk === null || sdk === void 0 ? void 0 : sdk.preferred) ? 'bg-emerald-950 text-emerald-300' : 'bg-yellow-950 text-yellow-300'}` }, (sdk === null || sdk === void 0 ? void 0 : sdk.installed) && (sdk === null || sdk === void 0 ? void 0 : sdk.preferred) ? '✓ SDK ACTIVE' : 'SDK CHECK'),
+                React.createElement("span", { className: `text-[10px] px-2 py-1 rounded-full ${(agents === null || agents === void 0 ? void 0 : agents.both_configured) ? 'bg-emerald-950 text-emerald-300' : 'bg-yellow-950 text-yellow-300'}` }, (agents === null || agents === void 0 ? void 0 : agents.both_configured) ? '✓ 2 STUDIO AGENTS' : 'AGENTS SETUP'))),
+        React.createElement("div", { className: "grid md:grid-cols-3 gap-3" },
+            React.createElement("div", { className: "soft rounded-xl p-4 border border-indigo-500/20" },
+                React.createElement("div", { className: "text-[10px] text-indigo-300 uppercase tracking-wider" }, "01 \u00B7 PRIVATE ENVIRONMENTS"),
+                React.createElement("div", { className: "font-bold mt-1" }, "Buyer & Supplier stay separated"),
+                React.createElement("div", { className: "text-xs text-gray-500 mt-2" }, "Each agent has its own session and private commercial limits.")),
+            React.createElement("div", { className: "soft rounded-xl p-4 border border-emerald-500/20" },
+                React.createElement("div", { className: "text-[10px] text-emerald-300 uppercase tracking-wider" }, "02 \u00B7 GOVERNED AGENTS"),
+                React.createElement("div", { className: "font-bold mt-1" }, "Lyzr agents propose terms"),
+                React.createElement("div", { className: "text-xs text-gray-500 mt-2" }, "Every proposal is checked before it can change negotiation state.")),
+            React.createElement("div", { className: "soft rounded-xl p-4 border border-cyan-500/20" },
+                React.createElement("div", { className: "text-[10px] text-cyan-300 uppercase tracking-wider" }, "03 \u00B7 TRUSTED OUTPUT"),
+                React.createElement("div", { className: "font-bold mt-1" }, "Only validated deals become contracts"),
+                React.createElement("div", { className: "text-xs text-gray-500 mt-2" }, "Policy, legal, risk and agreement checks sit outside the model."))),
+        React.createElement("div", { className: "grid md:grid-cols-4 gap-3 mt-3 text-[10px]" },
+            React.createElement("div", { className: "soft rounded-xl p-3" },
+                React.createElement("span", { className: "text-gray-500" }, "LYZR AGENTS"),
+                React.createElement("div", { className: "font-bold text-emerald-300 mt-1" }, (agents === null || agents === void 0 ? void 0 : agents.both_configured) ? '✓ CONNECTED' : '○ CONFIGURATION CHECK'),
+                React.createElement("div", { className: "text-gray-600 mt-1" }, "Buyer + Supplier")),
+            React.createElement("div", { className: "soft rounded-xl p-3" },
+                React.createElement("span", { className: "text-gray-500" }, "INFERENCE"),
+                React.createElement("div", { className: "font-bold text-emerald-300 mt-1" }, (sdk === null || sdk === void 0 ? void 0 : sdk.installed) && (sdk === null || sdk === void 0 ? void 0 : sdk.preferred) ? '✓ SDK READY' : '✓ API / SIMULATION READY'),
+                React.createElement("div", { className: "text-gray-600 mt-1" }, "Lyzr runtime")),
+            React.createElement("div", { className: "soft rounded-xl p-3" },
+                React.createElement("span", { className: "text-gray-500" }, "SAFETY"),
+                React.createElement("div", { className: "font-bold text-emerald-300 mt-1" }, "\u2713 ENFORCED"),
+                React.createElement("div", { className: "text-gray-600 mt-1" }, "Policy + legal firewall")),
+            React.createElement("div", { className: "soft rounded-xl p-3" },
+                React.createElement("span", { className: "text-gray-500" }, "AUDIT"),
+                React.createElement("div", { className: "font-bold text-emerald-300 mt-1" }, "\u2713 VERIFIED"),
+                React.createElement("div", { className: "text-gray-600 mt-1" }, "Tamper-evident chain"))),
+        React.createElement("div", { className: "mt-3 rounded-xl border border-yellow-500/15 bg-yellow-950/10 px-4 py-3" },
+            React.createElement("div", { className: "flex items-start gap-3" },
+                React.createElement("span", { className: "text-yellow-300" }, "\u2139"),
+                React.createElement("div", null,
+                    React.createElement("div", { className: "text-xs font-bold text-yellow-200" }, "Native Lyzr Responsible AI & AIMS are account-plan features"),
+                    React.createElement("div", { className: "text-[11px] text-gray-500 mt-1" }, "This submission account does not expose those additional APIs/URLs. AutoBus therefore does not pretend they are active: deterministic governance and the local tamper-evident audit layer remain active, with compatible export support when an authorized endpoint is available.")))));
+}
+function App() {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
+    const [lyzrStatus, setLyzrStatus] = useState(null);
+    useEffect(() => { fetch(`${API}/api/lyzr/status`).then(r => r.json()).then(setLyzrStatus).catch(() => setLyzrStatus(null)); }, []);
+    const [buyer, setBuyer] = useState(BUYER_DEF), [supplier, setSupplier] = useState(SUPP_DEF), [buyerName, setBuyerName] = useState('Acme Corp'), [supplierName, setSupplierName] = useState('Global Supply Ltd'), [product, setProduct] = useState('Industrial Servo Motors'), [qty, setQty] = useState(500), [loading, setLoading] = useState(false), [result, setResult] = useState(null), [audit, setAudit] = useState([]), [tab, setTab] = useState('arena'), [security, setSecurity] = useState(null), [auditIntegrity, setAuditIntegrity] = useState(null), [err, setErr] = useState(null), [showAdvanced, setShowAdvanced] = useState(false);
+    const payload = { buyer, supplier, buyer_name: buyerName, supplier_name: supplierName, product_name: product, quantity: +qty };
+    const run = async () => { setLoading(true); setErr(null); setResult(null); setSecurity(null); setAuditIntegrity(null); try {
+        const r = await fetch(`${API}/api/negotiations`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        if (!r.ok)
+            throw new Error(await r.text());
+        const d = await r.json();
+        setResult(d);
+        if (d.negotiation_id) {
+            const a = await fetch(`${API}/api/negotiations/${d.negotiation_id}/audit`);
+            setAudit((await a.json()).events || []);
+            const v = await fetch(`${API}/api/negotiations/${d.negotiation_id}/audit/verify`);
+            setAuditIntegrity(await v.json());
+        }
+    }
+    catch (e) {
+        setErr(e.message);
+    }
+    finally {
+        setLoading(false);
+    } };
+    const lastBuyer = (_b = (_a = result === null || result === void 0 ? void 0 : result.rounds) === null || _a === void 0 ? void 0 : _a.at(-1)) === null || _b === void 0 ? void 0 : _b.buyer, lastSupplier = (_d = (_c = result === null || result === void 0 ? void 0 : result.rounds) === null || _c === void 0 ? void 0 : _c.at(-1)) === null || _d === void 0 ? void 0 : _d.supplier, lastMetrics = (_e = result === null || result === void 0 ? void 0 : result.analytics) === null || _e === void 0 ? void 0 : _e.at(-1), ri = result === null || result === void 0 ? void 0 : result.final_risk;
+    const agreed = (result === null || result === void 0 ? void 0 : result.status) === 'agreed';
+    const reset = () => { setResult(null); setErr(null); setTab('arena'); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+    return React.createElement("div", { className: "min-h-screen" },
+        React.createElement("header", { className: "sticky top-0 z-20 border-b border-white/10 glass" },
+            React.createElement("div", { className: "max-w-6xl mx-auto px-5 py-4 flex items-center justify-between gap-4" },
+                React.createElement("div", { className: "flex items-center gap-3" },
+                    React.createElement("div", { className: "text-2xl" }, "\uD83E\uDD1D"),
+                    React.createElement("div", null,
+                        React.createElement("h1", { className: "font-black text-lg" }, "AutoBus"),
+                        React.createElement("p", { className: "text-[10px] uppercase tracking-widest text-gray-500" }, "Autonomous B2B negotiation"))),
+                React.createElement("div", { className: "flex items-center gap-2" },
+                    React.createElement("span", { className: `text-[10px] px-2.5 py-1 rounded-full ${(lyzrStatus === null || lyzrStatus === void 0 ? void 0 : lyzrStatus.live_mode_ready) ? 'bg-emerald-950 text-emerald-300' : 'bg-yellow-950 text-yellow-300'}` }, (lyzrStatus === null || lyzrStatus === void 0 ? void 0 : lyzrStatus.live_mode_ready) ? '● LIVE' : '● DEMO READY'),
+                    React.createElement("button", { className: "btn btn-secondary text-xs py-1.5 px-3", onClick: () => setShowAdvanced(v => !v) }, showAdvanced ? 'Hide advanced' : 'Advanced')))),
+        React.createElement("main", { className: "max-w-6xl mx-auto p-5 space-y-5" },
+            React.createElement("section", { className: "simple-card rounded-3xl p-6 md:p-8" },
+                React.createElement("div", { className: "max-w-3xl" },
+                    React.createElement("p", { className: "text-[11px] uppercase tracking-[.18em] text-indigo-300 font-bold" }, "Autonomous deal desk"),
+                    React.createElement("h2", { className: "text-3xl md:text-4xl font-black mt-2 leading-tight" }, "Let the agents negotiate the deal for you."),
+                    React.createElement("p", { className: "text-sm md:text-base text-gray-400 mt-3" }, "Enter the basic deal details. AutoBus handles bargaining, guardrails, risk checks, and contract generation automatically.")),
+                React.createElement("div", { className: "grid md:grid-cols-4 gap-3 mt-6" },
+                    React.createElement("div", { className: "flex items-start gap-3" },
+                        React.createElement("span", { className: "step-dot" }, "1"),
+                        React.createElement("div", null,
+                            React.createElement("div", { className: "font-bold text-sm" }, "Describe the deal"),
+                            React.createElement("div", { className: "text-xs text-gray-500 mt-1" }, "Who, what, and how much."))),
+                    React.createElement("div", { className: "flex items-start gap-3" },
+                        React.createElement("span", { className: "step-dot" }, "2"),
+                        React.createElement("div", null,
+                            React.createElement("div", { className: "font-bold text-sm" }, "Start negotiation"),
+                            React.createElement("div", { className: "text-xs text-gray-500 mt-1" }, "Buyer and supplier agents bargain."))),
+                    React.createElement("div", { className: "flex items-start gap-3" },
+                        React.createElement("span", { className: "step-dot" }, "3"),
+                        React.createElement("div", null,
+                            React.createElement("div", { className: "font-bold text-sm" }, "Review the outcome"),
+                            React.createElement("div", { className: "text-xs text-gray-500 mt-1" }, "See the agreed commercial terms."))),
+                    React.createElement("div", { className: "flex items-start gap-3" },
+                        React.createElement("span", { className: "step-dot" }, "4"),
+                        React.createElement("div", null,
+                            React.createElement("div", { className: "font-bold text-sm" }, "Download contract"),
+                            React.createElement("div", { className: "text-xs text-gray-500 mt-1" }, "Ready when the deal is approved."))))),
+            React.createElement("section", { className: "glass rounded-3xl p-5 md:p-6" },
+                React.createElement("div", { className: "flex flex-wrap items-end justify-between gap-4 mb-5" },
+                    React.createElement("div", null,
+                        React.createElement("p", { className: "text-[11px] uppercase tracking-widest text-gray-500" }, "Step 1 \u00B7 Deal details"),
+                        React.createElement("h3", { className: "text-xl font-black mt-1" }, "What are you buying?")),
+                    React.createElement("span", { className: "text-xs text-gray-500" }, "Private business rules stay hidden from the other side.")),
+                React.createElement("div", { className: "grid md:grid-cols-2 xl:grid-cols-4 gap-4" },
+                    React.createElement("div", null,
+                        React.createElement("label", null, "Your company"),
+                        React.createElement("input", { className: "friendly-input", value: buyerName, onChange: e => setBuyerName(e.target.value), placeholder: "e.g. Acme Corp" })),
+                    React.createElement("div", null,
+                        React.createElement("label", null, "Supplier"),
+                        React.createElement("input", { className: "friendly-input", value: supplierName, onChange: e => setSupplierName(e.target.value), placeholder: "e.g. Global Supply Ltd" })),
+                    React.createElement("div", null,
+                        React.createElement("label", null, "Product / service"),
+                        React.createElement("input", { className: "friendly-input", value: product, onChange: e => setProduct(e.target.value), placeholder: "e.g. Industrial Servo Motors" })),
+                    React.createElement("div", null,
+                        React.createElement("label", null, "Quantity"),
+                        React.createElement("input", { className: "friendly-input", type: "number", min: 1, value: qty, onChange: e => setQty(e.target.value) }))),
+                React.createElement("div", { className: "mt-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl bg-white/5 border border-white/5 p-4" },
+                    React.createElement("div", null,
+                        React.createElement("div", { className: "font-bold" }, "Ready to negotiate?"),
+                        React.createElement("div", { className: "text-xs text-gray-500 mt-1" }, "The agents will work within your configured guardrails.")),
+                    React.createElement("button", { className: "btn btn-primary text-base px-6 py-3 sm:min-w-64", onClick: run, disabled: loading }, loading ? React.createElement("span", { className: "pulse" }, "\u26A1 Agents are negotiating\u2026") : '▶ Start negotiation'))),
+            React.createElement("details", { open: showAdvanced, className: "glass rounded-3xl p-5 md:p-6", onToggle: e => setShowAdvanced(e.currentTarget.open) },
+                React.createElement("summary", null,
+                    React.createElement("div", { className: "flex items-center justify-between gap-4" },
+                        React.createElement("div", null,
+                            React.createElement("p", { className: "text-[11px] uppercase tracking-widest text-gray-500" }, "Optional"),
+                            React.createElement("h3", { className: "text-lg font-black mt-1" }, "Advanced guardrails"),
+                            React.createElement("p", { className: "text-xs text-gray-500 mt-1" }, "Adjust price, delivery, payment, SLA, and private BATNA limits.")),
+                        React.createElement("span", { className: "text-xs text-indigo-300 font-bold" },
+                            showAdvanced ? 'Hide' : 'Show controls',
+                            " \u25BE"))),
+                React.createElement("div", { className: "grid lg:grid-cols-2 gap-4 mt-5" },
+                    React.createElement(PolicyForm, { label: "Buyer Policy", defaults: BUYER_DEF, onChange: setBuyer }),
+                    React.createElement(PolicyForm, { label: "Supplier Policy", defaults: SUPP_DEF, onChange: setSupplier }))),
+            err && React.createElement("div", { className: "p-4 rounded-2xl border border-red-900/40 bg-red-950/20 text-red-300 text-sm" },
+                "\u274C ",
+                React.createElement("b", null, "Negotiation failed."),
+                " ",
+                err),
+            result && React.createElement(React.Fragment, null,
+                React.createElement("section", { className: `rounded-3xl p-6 md:p-8 border ${agreed ? 'border-emerald-500/25 bg-emerald-950/15' : 'border-yellow-500/20 bg-yellow-950/10'}` },
+                    React.createElement("div", { className: "flex flex-col md:flex-row md:items-center justify-between gap-5" },
+                        React.createElement("div", null,
+                            React.createElement("p", { className: `text-[11px] uppercase tracking-[.18em] font-bold ${agreed ? 'text-emerald-300' : 'text-yellow-300'}` }, agreed ? '✅ Deal agreed' : '⚠ Negotiation result'),
+                            React.createElement("h2", { className: "text-3xl font-black mt-2" }, agreed ? 'Here’s your deal.' : 'Negotiation complete.'),
+                            React.createElement("p", { className: "text-sm text-gray-400 mt-2" }, agreed ? 'The commercial terms below passed the configured policy and validation checks.' : 'Review the outcome and the detailed negotiation trail below.')),
+                        React.createElement("button", { className: "btn btn-secondary", onClick: reset }, "\u21BA Start another deal")),
+                    React.createElement("div", { className: "grid md:grid-cols-4 gap-3 mt-6" },
+                        React.createElement("div", { className: "kpi rounded-2xl p-4" },
+                            React.createElement("div", { className: "text-[10px] text-gray-500" }, "PRICE"),
+                            React.createElement("div", { className: "text-2xl font-black mt-1" },
+                                "\u20B9",
+                                Number((_g = (_f = lastBuyer === null || lastBuyer === void 0 ? void 0 : lastBuyer.price) !== null && _f !== void 0 ? _f : lastSupplier === null || lastSupplier === void 0 ? void 0 : lastSupplier.price) !== null && _g !== void 0 ? _g : 0).toLocaleString()),
+                            React.createElement("div", { className: "text-xs text-gray-500 mt-1" }, "Latest negotiated price")),
+                        React.createElement("div", { className: "kpi rounded-2xl p-4" },
+                            React.createElement("div", { className: "text-[10px] text-gray-500" }, "DELIVERY"),
+                            React.createElement("div", { className: "text-2xl font-black mt-1" }, (_j = (_h = lastBuyer === null || lastBuyer === void 0 ? void 0 : lastBuyer.delivery_days) !== null && _h !== void 0 ? _h : lastSupplier === null || lastSupplier === void 0 ? void 0 : lastSupplier.delivery_days) !== null && _j !== void 0 ? _j : '—',
+                                " days"),
+                            React.createElement("div", { className: "text-xs text-gray-500 mt-1" }, "Agreed timeline")),
+                        React.createElement("div", { className: "kpi rounded-2xl p-4" },
+                            React.createElement("div", { className: "text-[10px] text-gray-500" }, "PAYMENT"),
+                            React.createElement("div", { className: "text-2xl font-black mt-1" },
+                                "Net ", (_l = (_k = lastBuyer === null || lastBuyer === void 0 ? void 0 : lastBuyer.payment_days) !== null && _k !== void 0 ? _k : lastSupplier === null || lastSupplier === void 0 ? void 0 : lastSupplier.payment_days) !== null && _l !== void 0 ? _l : '—'),
+                            React.createElement("div", { className: "text-xs text-gray-500 mt-1" }, "Payment term")),
+                        React.createElement("div", { className: "kpi rounded-2xl p-4" },
+                            React.createElement("div", { className: "text-[10px] text-gray-500" }, "RISK"),
+                            React.createElement("div", { className: `text-2xl font-black mt-1 ${(ri === null || ri === void 0 ? void 0 : ri.label) === 'LOW' ? 'text-emerald-300' : (ri === null || ri === void 0 ? void 0 : ri.label) === 'MEDIUM' ? 'text-yellow-300' : 'text-red-300'}` }, (ri === null || ri === void 0 ? void 0 : ri.label) || '—'),
+                            React.createElement("div", { className: "text-xs text-gray-500 mt-1" }, "Policy risk level")))),
+                result.contract && React.createElement(ContractCard, { contract: result.contract, negId: result.negotiation_id }),
+                React.createElement("details", { className: "glass rounded-3xl p-5 md:p-6" },
+                    React.createElement("summary", null,
+                        React.createElement("div", { className: "flex items-center justify-between gap-4" },
+                            React.createElement("div", null,
+                                React.createElement("p", { className: "text-[11px] uppercase tracking-widest text-gray-500" }, "Optional detail"),
+                                React.createElement("h3", { className: "text-lg font-black mt-1" }, "See how the agents negotiated"),
+                                React.createElement("p", { className: "text-xs text-gray-500 mt-1" }, "Charts, round-by-round proposals, trust checks, and audit history.")),
+                            React.createElement("span", { className: "text-xs text-indigo-300 font-bold" }, "Open details \u25BE"))),
+                    React.createElement("div", { className: "mt-5 grid md:grid-cols-5 gap-3" },
+                        React.createElement("div", { className: "kpi rounded-2xl p-4" },
+                            React.createElement("div", { className: "text-[10px] text-gray-500" }, "ROUNDS"),
+                            React.createElement("div", { className: "text-xl font-black mt-1" }, result.rounds.length)),
+                        React.createElement("div", { className: "kpi rounded-2xl p-4" },
+                            React.createElement("div", { className: "text-[10px] text-gray-500" }, "CONVERGENCE"),
+                            React.createElement("div", { className: "text-xl font-black mt-1" },
+                                Math.round((result.convergence.convergence_ratio || 0) * 100),
+                                "%")),
+                        React.createElement("div", { className: "kpi rounded-2xl p-4" },
+                            React.createElement("div", { className: "text-[10px] text-gray-500" }, "JOINT UTILITY"),
+                            React.createElement("div", { className: "text-xl font-black text-emerald-300 mt-1" },
+                                Math.round(((lastMetrics === null || lastMetrics === void 0 ? void 0 : lastMetrics.joint_utility) || 0) * 100),
+                                "%")),
+                        React.createElement("div", { className: "kpi rounded-2xl p-4" },
+                            React.createElement("div", { className: "text-[10px] text-gray-500" }, "GOVERNANCE"),
+                            React.createElement("div", { className: "text-sm font-black mt-2" }, ((_m = result.governance) === null || _m === void 0 ? void 0 : _m.external_responsible_ai_configured) ? 'LYZR RAI' : 'LOCAL FIREWALL')),
+                        React.createElement("div", { className: "kpi rounded-2xl p-4" },
+                            React.createElement("div", { className: "text-[10px] text-gray-500" }, "AUDIT"),
+                            React.createElement("div", { className: `text-sm font-black mt-2 ${(auditIntegrity === null || auditIntegrity === void 0 ? void 0 : auditIntegrity.valid) ? 'text-emerald-300' : 'text-yellow-300'}` }, (auditIntegrity === null || auditIntegrity === void 0 ? void 0 : auditIntegrity.valid) ? '✓ VERIFIED' : 'CHECKED'))),
+                    React.createElement("section", { className: "glass rounded-2xl p-5 mt-4" },
+                        React.createElement("div", { className: "flex flex-wrap gap-2 border-b border-white/10 pb-3 mb-4" }, [['arena', '📈 Deal path'], ['rounds', '📋 Round history'], ['audit', '🔒 Trust & audit']].map(([k, l]) => React.createElement("button", { key: k, onClick: () => setTab(k), className: `px-4 py-2 rounded-full text-xs font-bold ${tab === k ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-white'}` }, l))),
+                        tab === 'arena' ? React.createElement(NegotiationChart, { rounds: result.rounds }) : tab === 'rounds' ? React.createElement(Rounds, { rounds: result.rounds }) : React.createElement(React.Fragment, null,
+                            React.createElement(Audit, { events: audit }),
+                            React.createElement("div", { className: "flex justify-end mt-3" },
+                                React.createElement("span", { className: `text-xs font-bold ${(auditIntegrity === null || auditIntegrity === void 0 ? void 0 : auditIntegrity.valid) ? 'text-emerald-300' : 'text-red-300'}` },
+                                    (auditIntegrity === null || auditIntegrity === void 0 ? void 0 : auditIntegrity.valid) ? '✓ HASH CHAIN VERIFIED' : '✕ AUDIT INTEGRITY FAILED',
+                                    " \u00B7 ",
+                                    (auditIntegrity === null || auditIntegrity === void 0 ? void 0 : auditIntegrity.events) || 0,
+                                    " events")))),
+                    React.createElement("div", { className: "grid lg:grid-cols-2 gap-4 mt-4" },
+                        React.createElement(AgentPanel, { name: buyerName, role: "buyer", policy: buyer, latest: lastBuyer, metrics: lastMetrics === null || lastMetrics === void 0 ? void 0 : lastMetrics.buyer_utility }),
+                        React.createElement(AgentPanel, { name: supplierName, role: "supplier", policy: supplier, latest: lastSupplier, metrics: lastMetrics === null || lastMetrics === void 0 ? void 0 : lastMetrics.supplier_utility })),
+                    React.createElement(ParetoPanel, { pareto: result.pareto }))),
+            React.createElement("details", { className: "glass rounded-3xl p-5 md:p-6" },
+                React.createElement("summary", null,
+                    React.createElement("div", { className: "flex items-center justify-between gap-4" },
+                        React.createElement("div", null,
+                            React.createElement("p", { className: "text-[11px] uppercase tracking-widest text-gray-500" }, "For testing & demos"),
+                            React.createElement("h3", { className: "text-lg font-black mt-1" }, "Security & multi-supplier tools"),
+                            React.createElement("p", { className: "text-xs text-gray-500 mt-1" }, "Red-team guardrail testing and 3-supplier RFQ are kept out of the main workflow.")),
+                        React.createElement("span", { className: "text-xs text-indigo-300 font-bold" }, "Open tools \u25BE"))),
+                React.createElement("div", { className: "grid lg:grid-cols-2 gap-5 mt-5" },
+                    React.createElement(SecurityPanel, { request: payload, setSecurity: setSecurity }),
+                    React.createElement(RFQPanel, { payload: payload }))),
+            React.createElement("details", { className: "glass rounded-3xl p-5 md:p-6" },
+                React.createElement("summary", null,
+                    React.createElement("div", { className: "flex items-center justify-between gap-4" },
+                        React.createElement("div", null,
+                            React.createElement("p", { className: "text-[11px] uppercase tracking-widest text-gray-500" }, "Technical information"),
+                            React.createElement("h3", { className: "text-lg font-black mt-1" }, "How AutoBus is governed"),
+                            React.createElement("p", { className: "text-xs text-gray-500 mt-1" }, "Useful for judges, developers, and technical review.")),
+                        React.createElement("span", { className: "text-xs text-indigo-300 font-bold" }, "Open architecture \u25BE"))),
+                React.createElement("div", { className: "mt-5" },
+                    React.createElement(LyzrControlPlane, { status: lyzrStatus }))),
+            !result && !loading && !err && React.createElement("div", { className: "text-center py-8 text-gray-500" },
+                React.createElement("div", { className: "text-4xl mb-3" }, "\uD83E\uDD1D"),
+                React.createElement("p", { className: "text-sm" }, "Your first negotiation is ready to start."),
+                React.createElement("p", { className: "text-xs mt-2" }, "The default business rules are already loaded. Advanced guardrails are optional."))));
+}
+try {
+    if (!window.React || !window.ReactDOM)
+        throw new Error("React runtime failed to load. Refresh once; if it persists, the browser/CDN network is blocking the frontend runtime.");
+    ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App, null));
+}
+catch (err) {
+    console.error(err);
+    const root = document.getElementById('root');
+    root.innerHTML = `<div style="min-height:100vh;display:grid;place-items:center;padding:24px"><div style="max-width:760px;width:100%;background:rgba(127,29,29,.15);border:1px solid rgba(248,113,113,.3);border-radius:18px;padding:24px;color:#fecaca"><div style="font-size:12px;letter-spacing:.12em;text-transform:uppercase;font-weight:700">AUTOBUS FRONTEND ERROR</div><h1 style="margin:8px 0;font-size:28px">The app could not start.</h1><p style="margin:0;color:#fca5a5;font-size:14px">${String(err.message || err)}</p><p style="margin:14px 0 0;color:#9ca3af;font-size:12px">Open browser DevTools → Console for the exact runtime error.</p></div></div>`;
+}
+</script></body></html>

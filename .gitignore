@@ -1,0 +1,7 @@
+/.env
+backend/data/*.jsonl
+backend/data/*.pdf
+backend/__pycache__/
+backend/**/__pycache__/
+.pytest_cache/
+node_modules/
