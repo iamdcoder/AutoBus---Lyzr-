@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: autobus-negotiator
+    env: docker
+    plan: free
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: LYZR_API_KEY
+        sync: false
+      - key: BUYER_AGENT_ID
+        value: 6aa055144dee8f87a280eb21
+      - key: SUPPLIER_AGENT_ID
+        value: 6aa055ad7322addc1448fa6a
+      - key: LYZR_USER_ID
+        value: autobus-demo
+      - key: LYZR_RESPONSIBLE_AI_ENABLED
+        value: "1"
+      - key: LYZR_BASE_URL
+        value: https://agent-prod.studio.lyzr.ai
+      - key: LYZR_USE_SDK
+        value: "1"
+      - key: LYZR_SDK_FALLBACK
+        value: "1"
+      - key: PUBLIC_BASE_URL
+        sync: false

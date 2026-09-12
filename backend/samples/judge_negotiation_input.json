@@ -1,0 +1,50 @@
+{
+  "buyer": {
+    "price": {
+      "target": 100000,
+      "minimum": 95000,
+      "maximum": 110000
+    },
+    "delivery": {
+      "target_days": 30,
+      "maximum_days": 31
+    },
+    "payment": {
+      "preferred_days": 60,
+      "minimum_days": 45
+    },
+    "sla": {
+      "minimum_uptime": 98,
+      "minimum_penalty": 2,
+      "maximum_penalty": 5
+    },
+    "batna": "Purchase from alternate supplier at a 10% higher total cost with 45-day delivery.",
+    "max_rounds": 10
+  },
+  "supplier": {
+    "price": {
+      "target": 120000,
+      "minimum": 110000,
+      "maximum": 125000
+    },
+    "delivery": {
+      "target_days": 28,
+      "maximum_days": 31
+    },
+    "payment": {
+      "preferred_days": 60,
+      "minimum_days": 60
+    },
+    "sla": {
+      "minimum_uptime": 98,
+      "minimum_penalty": 2,
+      "maximum_penalty": 4
+    },
+    "batna": "Sell to another qualified buyer at a 110000 minimum price with Net 45 terms.",
+    "max_rounds": 10
+  },
+  "buyer_name": "Apex Industrial Procurement",
+  "supplier_name": "Vertex Components Ltd.",
+  "product_name": "Industrial Components",
+  "quantity": 1000
+}

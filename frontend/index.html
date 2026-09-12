@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>AutoBus — Autonomous B2B Negotiation Arena</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/prop-types@15/prop-types.js"></script>
+<script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  body{background:#07070b;color:#e8e8f0;font-family:Inter,ui-sans-serif,system-ui,sans-serif}
+  ::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-track{background:#0d0d14}::-webkit-scrollbar-thumb{background:#343440;border-radius:999px}
+  .glass{background:rgba(255,255,255,.035);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.08)}
+  .soft{background:rgba(255,255,255,.025)}
+  .badge-offer{background:#1d4ed8;color:#bfdbfe}.badge-counter{background:#6b21a8;color:#e9d5ff}.badge-accept{background:#065f46;color:#a7f3d0}.badge-walk_away{background:#7f1d1d;color:#fca5a5}
+  .badge-allowed{background:#065f46;color:#a7f3d0}.badge-blocked{background:#7f1d1d;color:#fca5a5}
+  .pulse{animation:pulse 1.6s infinite}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+  input,select{background:#0d1018;border:1px solid #303747;color:#e8e8f0;border-radius:7px;padding:7px 10px;width:100%;outline:none}
+  input:focus,select:focus{border-color:#6366f1}
+  label{font-size:.7rem;color:#9ca3af;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em}
+  .btn{border-radius:8px;padding:9px 16px;font-weight:700;cursor:pointer;transition:all .18s}.btn:disabled{opacity:.5;cursor:not-allowed}
+  .btn-primary{background:#4f46e5;color:white}.btn-primary:hover{background:#4338ca}.btn-secondary{background:#151922;color:#e8e8f0;border:1px solid #303747}.btn-secondary:hover{background:#202633}
+  .kpi{background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.025));border:1px solid rgba(255,255,255,.08)}
+  .simple-card{background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.02));border:1px solid rgba(255,255,255,.08)}
+  .step-dot{width:28px;height:28px;display:grid;place-items:center;border-radius:999px;background:#1d2330;color:#c7d2fe;font-size:12px;font-weight:800;flex:none}
+  .friendly-input{font-size:.95rem !important;padding:11px 12px !important;border-radius:10px !important}
+  details>summary{list-style:none;cursor:pointer}
+  details>summary::-webkit-details-marker{display:none}
+</style>
+</head>
+<body><div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useReducer} = React;
+const {LineChart,Line,XAxis,YAxis,Tooltip,CartesianGrid,Legend,ResponsiveContainer,BarChart,Bar} = Recharts;
+const API=(window.AUTOBUS_API && window.AUTOBUS_API.replace(/\/$/,"")) || ((window.location.protocol==="http:" || window.location.protocol==="https:") ? window.location.origin : "http://localhost:8000");
+
+const BUYER_DEF={price:{target:95000,maximum:115000},delivery:{target_days:25,maximum_days:40},payment:{preferred_days:60,minimum_days:30},sla:{minimum_uptime:99,minimum_penalty:2,maximum_penalty:7},batna:"Existing supplier at ₹118K",max_rounds:8};
+const SUPP_DEF={price:{target:125000,minimum:105000},delivery:{target_days:35,maximum_days:50},payment:{preferred_days:30,minimum_days:15},sla:{minimum_uptime:98,minimum_penalty:1,maximum_penalty:6},batna:"Other customer offers ₹130K",max_rounds:8};
+const RFQ_DEFS=[
+ {name:"Northstar Components",policy:SUPP_DEF},
+ {name:"Vertex Industrial",policy:{...SUPP_DEF,price:{target:118000,minimum:103000},delivery:{target_days:31,maximum_days:44}}},
+ {name:"Atlas Motion",policy:{...SUPP_DEF,price:{target:121000,minimum:108000},payment:{preferred_days:45,minimum_days:20},sla:{minimum_uptime:99,minimum_penalty:1,maximum_penalty:5}}}
+];
+
+// Tracks everything produced by a single "run negotiation" click as one unit,
+// instead of six separate useState flags that had to be kept in sync by hand.
+const NEGOTIATION_INITIAL={loading:false,result:null,audit:[],security:null,auditIntegrity:null,error:null};
+function negotiationReducer(state,action){
+ switch(action.type){
+  case 'RUN_START':return {...NEGOTIATION_INITIAL,loading:true};
+  case 'RUN_SUCCESS':return {...state,loading:false,result:action.result};
+  case 'RUN_ERROR':return {...state,loading:false,error:action.error};
+  case 'SET_AUDIT':return {...state,audit:action.audit};
+  case 'SET_AUDIT_INTEGRITY':return {...state,auditIntegrity:action.auditIntegrity};
+  case 'SET_SECURITY':return {...state,security:action.security};
+  case 'RESET':return NEGOTIATION_INITIAL;
+  default:return state;
+ }
+}
+
+function Badge({text,type}){const cls=`badge-${(type||text||"").toLowerCase().replace(/ /g,"_")}`;return <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide ${cls}`}>{text}</span>}
+function Stat({label,value}){return <div className="flex justify-between gap-3 py-1 border-b border-white/5"><span className="text-[11px] text-gray-500">{label}</span><span className="text-xs font-semibold text-gray-200">{value}</span></div>}
+function UtilityBar({value,label}){return <div><div className="flex justify-between text-[11px] mb-1"><span className="text-gray-500">{label}</span><span className="font-semibold">{Math.round(value*100)}%</span></div><div className="h-1.5 rounded-full bg-white/10 overflow-hidden"><div className="h-full bg-indigo-500 rounded-full" style={{width:`${Math.max(0,Math.min(100,value*100))}%`}}/></div></div>}
+
+function F({value,l,min,max,step=1,onChange}){return <div><label>{l}</label><input type="number" min={min} max={max} step={step} value={value??""} onChange={e=>onChange(e.target.value)}/></div>}
+
+function PolicyForm({label,defaults,onChange}){
+ const [d,setD]=useState(defaults);
+ useEffect(()=>onChange(d),[d]);
+ const up=(path,val)=>setD(prev=>{const n={...prev};const parts=path.split(".");let cur=n;for(let i=0;i<parts.length-1;i++){cur[parts[i]]={...cur[parts[i]]};cur=cur[parts[i]]}cur[parts.at(-1)]=val===""?"":(isNaN(val)?val:+val);return n});
+ const get=(path)=>path.split('.').reduce((o,k)=>o?.[k],d);
+ const buyer=label.toLowerCase().includes('buyer');
+ return <div className="glass rounded-2xl p-5">
+   <div className="flex items-center justify-between mb-4"><div><h3 className="font-black text-sm uppercase tracking-widest">{label}</h3><p className="text-[10px] text-gray-500 mt-1">🔒 PRIVATE BUSINESS RULES — hidden from the other agent</p></div><span className="text-[10px] px-2 py-1 rounded-full bg-white/5 text-gray-400">{buyer?'BUYER':'SUPPLIER'} CONTROL</span></div>
+   <div className="grid grid-cols-2 gap-3">
+    <F value={get("price.target")} l="Target Price (₹)" min={1} onChange={v=>up("price.target",v)}/>
+    <F value={get(buyer?"price.maximum":"price.minimum")} l={buyer?"Max Price (₹)":"Min Price (₹)"} min={1} onChange={v=>up(buyer?"price.maximum":"price.minimum",v)}/>
+    <F value={get("delivery.target_days")} l="Delivery Target" min={1} onChange={v=>up("delivery.target_days",v)}/><F value={get("delivery.maximum_days")} l="Max Delivery" min={1} onChange={v=>up("delivery.maximum_days",v)}/>
+    <F value={get("payment.preferred_days")} l="Preferred Net" min={1} onChange={v=>up("payment.preferred_days",v)}/><F value={get("payment.minimum_days")} l="Min Net" min={1} onChange={v=>up("payment.minimum_days",v)}/>
+    <F value={get("sla.minimum_uptime")} l="Min Uptime %" min={95} max={100} step={0.5} onChange={v=>up("sla.minimum_uptime",v)}/><F value={get("sla.maximum_penalty")} l="Max Penalty %" min={0} step={0.5} onChange={v=>up("sla.maximum_penalty",v)}/>
+    <F value={get("max_rounds")} l="Max Rounds" min={1} max={20} onChange={v=>up("max_rounds",v)}/><F value={get("sla.minimum_penalty")} l="Min Penalty %" min={0} step={0.5} onChange={v=>up("sla.minimum_penalty",v)}/>
+   </div>
+   <div className="mt-3"><label>BATNA</label><input value={d.batna||""} onChange={e=>up("batna",e.target.value)}/></div>
+ </div>
+}
+
+function AgentPanel({name,role,policy,latest,metrics}){
+ const buyer=role==='buyer';
+ return <div className="glass rounded-2xl p-5">
+  <div className="flex items-center justify-between mb-4"><div className="flex items-center gap-3"><div className="text-2xl">{buyer?'🏢':'🏭'}</div><div><h3 className="font-black">{name}</h3><p className="text-[10px] uppercase tracking-widest text-gray-500">{role} agent • isolated policy</p></div></div><span className="text-[10px] px-2 py-1 rounded-full bg-white/5 text-gray-400">🔒 PRIVATE</span></div>
+  <div className="space-y-1 mb-4"><Stat label="Target Price" value={`₹${Number(policy.price.target).toLocaleString()}`}/><Stat label={buyer?'Max Price':'Min Price'} value={`₹${Number(buyer?policy.price.maximum:policy.price.minimum).toLocaleString()}`}/><Stat label="Delivery" value={`${policy.delivery.target_days}d target / ${policy.delivery.maximum_days}d max`}/><Stat label="Payment" value={`Net ${policy.payment.preferred_days} pref / ${policy.payment.minimum_days} min`}/><Stat label="SLA" value={`${policy.sla.minimum_uptime}% uptime · ${policy.sla.maximum_penalty}% max pen`}/></div>
+  {metrics&&<div className="mb-4"><UtilityBar label="Current utility" value={metrics}/></div>}
+  {latest&&<div className="soft rounded-xl p-4 border border-white/5"><div className="flex items-center justify-between mb-2"><span className="text-[10px] text-gray-500 uppercase tracking-widest">Latest proposal</span><Badge text={latest.action} type={latest.action}/></div><div className="text-2xl font-black">₹{Number(latest.price).toLocaleString()}</div><div className="grid grid-cols-2 gap-1 text-[11px] text-gray-300 mt-2"><span>📦 {latest.delivery_days}d</span><span>💳 Net {latest.payment_days}</span><span>⚡ {latest.sla_uptime}%</span><span>⚠ {latest.sla_penalty}% pen</span></div><p className="text-[10px] text-gray-500 mt-2">{latest.rationale||"No rationale provided"}</p></div>}
+ </div>
+}
+
+function NegotiationChart({rounds}){
+ if(!rounds?.length)return <div className="h-56 grid place-items-center text-sm text-gray-600">Awaiting negotiation data…</div>;
+ const data=rounds.map(r=>({round:r.round,buyer:+r.buyer.price.toFixed(2),supplier:+r.supplier.price.toFixed(2),gap:+r.gap.toFixed(4),buyerU:r.metrics?.buyer_utility||0,supplierU:r.metrics?.supplier_utility||0}));
+ return <div className="grid lg:grid-cols-2 gap-5"><div><p className="text-xs text-gray-400 mb-2">Price convergence</p><ResponsiveContainer width="100%" height={220}><LineChart data={data}><CartesianGrid strokeDasharray="3 3" stroke="#1d2330"/><XAxis dataKey="round" stroke="#667085"/><YAxis stroke="#667085" tickFormatter={v=>`₹${Math.round(v/1000)}k`}/><Tooltip contentStyle={{background:'#0d1119',border:'1px solid #303747',borderRadius:8,fontSize:11}}/><Legend wrapperStyle={{fontSize:11}}/><Line dataKey="buyer" name="Buyer" stroke="#818cf8" strokeWidth={2.5} dot={{r:3}}/><Line dataKey="supplier" name="Supplier" stroke="#f472b6" strokeWidth={2.5} dot={{r:3}}/></LineChart></ResponsiveContainer></div><div><p className="text-xs text-gray-400 mb-2">Utility convergence</p><ResponsiveContainer width="100%" height={220}><LineChart data={data}><CartesianGrid strokeDasharray="3 3" stroke="#1d2330"/><XAxis dataKey="round" stroke="#667085"/><YAxis domain={[0,1]} tickFormatter={v=>`${Math.round(v*100)}%`} stroke="#667085"/><Tooltip contentStyle={{background:'#0d1119',border:'1px solid #303747',borderRadius:8,fontSize:11}}/><Legend wrapperStyle={{fontSize:11}}/><Line dataKey="buyerU" name="Buyer utility" stroke="#60a5fa" strokeWidth={2}/><Line dataKey="supplierU" name="Supplier utility" stroke="#34d399" strokeWidth={2}/></LineChart></ResponsiveContainer></div></div>
+}
+
+function Rounds({rounds}){return <div className="overflow-auto max-h-72"><table className="w-full text-xs"><thead><tr className="text-gray-500 border-b border-white/10"><th className="text-left py-2">Round</th><th className="text-right">Buyer</th><th className="text-right">Supplier</th><th className="text-right">Gap</th><th className="text-center">Actions</th></tr></thead><tbody>{(rounds||[]).map(r=><tr key={r.round} className="border-b border-white/5"><td className="py-2 font-mono">R{r.round}</td><td className="text-right text-indigo-300">₹{r.buyer.price.toLocaleString()}</td><td className="text-right text-pink-300">₹{r.supplier.price.toLocaleString()}</td><td className="text-right text-emerald-300">{r.gap.toFixed(3)}</td><td className="text-center"><Badge text={r.buyer.action} type={r.buyer.action}/> <Badge text={r.supplier.action} type={r.supplier.action}/></td></tr>)}</tbody></table></div>}
+
+// The negotiation engine reports outcomes through `status`, not just `event_type` —
+// e.g. a "policy_check" or "agreement_validation" event can itself carry
+// status "blocked", and "proposal_generated"/"agreement_reached" events can carry
+// status "agreed" or "approved". Classify by the actual status string the backend
+// sent, so every real blocked/approved observation is shown correctly instead of
+// only the two event types that happened to be special-cased before.
+const AUDIT_NEGATIVE_STATUSES=new Set(['blocked','deadlock','walk_away','error']);
+const AUDIT_POSITIVE_STATUSES=new Set(['success','agreed','allowed','approved']);
+
+function Audit({events}){
+ if(!events?.length)return <div className="p-8 text-center text-gray-600 text-sm">No audit events recorded yet.</div>;
+ return <div className="space-y-1 overflow-auto max-h-72">{events.map((e,i)=>{
+  const negative=AUDIT_NEGATIVE_STATUSES.has(e.status);
+  const positive=AUDIT_POSITIVE_STATUSES.has(e.status);
+  const icon=e.event_type==='proposal_blocked'?'🚫':e.event_type==='deadlock'?'⛔':e.event_type==='agreement_reached'?'✅':negative?'⚠':positive?'✅':'📋';
+  // Surface whatever observation the backend logged for this event — a blocked-proposal
+  // violation, a deadlock/failure reason, an error message, or any other detail payload —
+  // instead of only ever showing violations (which left every other event with no explanation).
+  const note=e.details?.violations?.[0]
+    ?? e.details?.reason
+    ?? e.details?.error
+    ?? (e.details && typeof e.details==='object'
+        ? Object.entries(e.details).filter(([k,v])=>v!=null&&typeof v!=='object').map(([k,v])=>`${k.replaceAll('_',' ')}: ${v}`).join(' · ')
+        : null);
+  return <div key={i} className={`p-2.5 rounded-xl text-xs border ${negative?'bg-red-950/30 border-red-900/40':positive?'bg-emerald-950/20 border-emerald-900/30':'bg-white/5 border-white/5'}`}>
+   <div className="flex items-center justify-between gap-3"><span className="font-semibold">{icon} {e.event_type.replaceAll('_',' ')}</span><span className="text-gray-600">{e.round_number?`R${e.round_number} · `:''}{new Date(e.timestamp).toLocaleTimeString()}</span></div>
+   <div className="text-gray-500 mt-1">{e.actor} · {e.status}</div>
+   {note&&<div className={`${negative?'text-red-300':'text-gray-400'} mt-1`}>{note}</div>}
+  </div>
+ })}</div>
+}
+
+function ContractCard({contract,negId}){if(!contract)return null;const download=(url,name)=>{const a=document.createElement('a');a.href=url;a.download=name||'contract';a.click()};return <div className="glass rounded-2xl p-6 border border-emerald-500/20 bg-emerald-950/10"><div className="flex flex-wrap items-center justify-between gap-3 mb-4"><div><p className="text-[10px] uppercase tracking-widest text-emerald-300">✅ Executable agreement</p><h3 className="text-xl font-black">{contract.contract_id}</h3></div><div className="flex gap-2"><button className="btn btn-secondary text-xs" onClick={()=>download(`${API}/api/negotiations/${negId}/pdf`,`${contract.contract_id}.pdf`)}>⬇ PDF</button><button className="btn btn-secondary text-xs" onClick={()=>download(URL.createObjectURL(new Blob([JSON.stringify(contract,null,2)],{type:'application/json'})),`${contract.contract_id}.json`)}>⬇ JSON</button></div></div><div className="grid grid-cols-2 md:grid-cols-4 gap-3">{[["Buyer",contract.buyer_name],["Supplier",contract.supplier_name],["Price",`₹${Number(contract.unit_price).toLocaleString()}`],["Delivery",`${contract.delivery_days} days`],["Payment",`Net ${contract.payment_days}`],["SLA",`${contract.sla.minimum_uptime}%`],["Penalty",`${contract.sla.penalty_percent}%`],["Rounds",contract.negotiation_rounds]].map(([l,v])=><div key={l} className="soft rounded-xl p-3"><div className="text-[10px] text-gray-500 uppercase tracking-wider">{l}</div><div className="font-bold text-sm mt-1">{v}</div></div>)}</div></div>}
+
+function SecurityPanel({request,security,setSecurity}){const [busy,setBusy]=useState(false);const run=async()=>{setBusy(true);try{const r=await fetch(`${API}/api/stress-test`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(request)});setSecurity(await r.json())}finally{setBusy(false)}};return <div className="glass rounded-2xl p-6"><div className="flex flex-wrap items-center justify-between gap-3 mb-4"><div><p className="text-[10px] uppercase tracking-widest text-red-300">🛡 Adversarial Guardrail Lab</p><h3 className="text-lg font-black">Attack the negotiation</h3><p className="text-xs text-gray-500 mt-1">Deliberately inject out-of-policy proposals and prove they are blocked.</p></div><button className="btn btn-secondary" onClick={run} disabled={busy}>{busy?'Running attacks…':'⚔ Run 6 attacks'}</button></div>{security?<><div className="grid grid-cols-3 gap-3 mb-4"><div className="kpi rounded-xl p-4"><div className="text-[10px] text-gray-500">ATTEMPTS</div><div className="text-2xl font-black mt-1">{security.total}</div></div><div className="kpi rounded-xl p-4"><div className="text-[10px] text-gray-500">BLOCKED</div><div className="text-2xl font-black text-emerald-300 mt-1">{security.blocked}</div></div><div className="kpi rounded-xl p-4"><div className="text-[10px] text-gray-500">ENFORCEMENT</div><div className="text-2xl font-black text-emerald-300 mt-1">{Math.round(security.pass_rate*100)}%</div></div></div><div className="space-y-1">{security.results.map(x=><div key={x.name} className="flex items-center justify-between p-2 rounded-lg bg-white/5"><span className="text-xs capitalize">{x.name.replaceAll('_',' ')}</span><span className="text-emerald-300 text-xs font-bold">{x.blocked?'BLOCKED':'FAILED TO BLOCK'}</span></div>)}</div></>:<div className="p-8 text-center text-gray-600 text-sm">The red-team result will appear here.</div>}</div>}
+
+function ParetoPanel({pareto}){if(!pareto?.length)return null;return <div className="glass rounded-2xl p-6"><div className="mb-4"><p className="text-[10px] uppercase tracking-widest text-cyan-300">📐 Pareto frontier</p><h3 className="text-lg font-black">Why this deal is efficient</h3><p className="text-xs text-gray-500 mt-1">Each historical package is scored for both parties; dominated deals are eliminated.</p></div><div className="overflow-auto"><table className="w-full text-xs"><thead><tr className="text-gray-500 border-b border-white/10"><th className="text-left py-2">Package</th><th>Buyer utility</th><th>Supplier utility</th><th>Joint</th><th>Status</th></tr></thead><tbody>{pareto.map(p=><tr key={p.index} className="border-b border-white/5"><td className="py-2">#{p.index+1} · ₹{Number(p.proposal.price).toLocaleString()}</td><td className="text-center">{Math.round(p.buyer_utility*100)}%</td><td className="text-center">{Math.round(p.supplier_utility*100)}%</td><td className="text-center font-bold">{Math.round(p.joint_utility*100)}%</td><td className="text-center">{p.pareto_efficient?<span className="text-emerald-300 font-bold">PARETO</span>:<span className="text-gray-600">dominated</span>}</td></tr>)}</tbody></table></div></div>}
+
+function RFQPanel({payload}){const [busy,setBusy]=useState(false),[rfq,setRfq]=useState(null);const run=async()=>{setBusy(true);try{const r=await fetch(`${API}/api/rfq`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...payload,suppliers:RFQ_DEFS})});setRfq(await r.json())}finally{setBusy(false)}};return <div className="glass rounded-2xl p-6"><div className="flex flex-wrap items-center justify-between gap-3 mb-4"><div><p className="text-[10px] uppercase tracking-widest text-yellow-300">🏁 Multi-vendor RFQ</p><h3 className="text-lg font-black">One buyer. Three autonomous suppliers.</h3><p className="text-xs text-gray-500 mt-1">Run the same buyer envelope against three supplier policies and rank feasible deals.</p></div><button className="btn btn-primary" onClick={run} disabled={busy}>{busy?'Running RFQ…':'▶ Run 3-supplier RFQ'}</button></div><div className="grid md:grid-cols-3 gap-3 mb-4">{RFQ_DEFS.map((s,i)=><div key={s.name} className="soft rounded-xl p-4"><div className="text-[10px] text-gray-500">SUPPLIER {i+1}</div><div className="font-bold mt-1">{s.name}</div><div className="text-xs text-gray-400 mt-2">Floor ₹{Number(s.policy.price.minimum).toLocaleString()} · {s.policy.delivery.maximum_days}d max · {s.policy.sla.minimum_uptime}% SLA</div></div>)}</div>{rfq&&<div className="space-y-1">{rfq.results.map((x,i)=><div key={x.supplier} className={`p-3 rounded-xl border ${i===0?'border-emerald-500/30 bg-emerald-950/10':'border-white/5 bg-white/5'}`}><div className="flex items-center justify-between"><div className="flex items-center gap-2"><span className="font-semibold text-sm">#{i+1} {x.supplier}</span>{i===0&&<span className="text-[9px] px-2 py-1 rounded-full bg-emerald-950 text-emerald-300">RECOMMENDED</span>}</div><span className="text-xs text-gray-500">{x.rounds} rounds</span></div><div className="grid grid-cols-4 gap-2 mt-2 text-xs"><span>Status <b>{x.status}</b></span><span>Buyer <b>{Math.round((x.score?.buyer_utility||0)*100)}%</b></span><span>Supplier <b>{Math.round((x.score?.supplier_utility||0)*100)}%</b></span><span>Joint <b className="text-emerald-300">{Math.round((x.score?.joint_utility||0)*100)}%</b></span></div></div>)}</div>}</div>}
+
+function LyzrControlPlane({status}){
+ const [arch,setArch]=useState(null),[evidence,setEvidence]=useState(null);
+ useEffect(()=>{Promise.all([fetch(`${API}/api/architecture`).then(r=>r.json()),fetch(`${API}/api/lyzr/evidence`).then(r=>r.json())]).then(([a,e])=>{setArch(a);setEvidence(e)}).catch(()=>{})},[]);
+ const sdk=evidence?.sdk, agents=evidence?.studio_agents;
+ return <section className="glass rounded-2xl p-5"><div className="flex flex-wrap items-center justify-between gap-3 mb-4"><div><p className="text-[10px] uppercase tracking-widest text-indigo-300">◈ POWERED BY LYZR</p><h2 className="text-lg font-black">Two agents. One governed negotiation.</h2><p className="text-xs text-gray-500 mt-1">Agents can negotiate, but they never get direct authority to break policy or sign the contract.</p></div><div className="flex gap-2 flex-wrap"><span className={`text-[10px] px-2 py-1 rounded-full ${sdk?.installed&&sdk?.preferred?'bg-emerald-950 text-emerald-300':'bg-yellow-950 text-yellow-300'}`}>{sdk?.installed&&sdk?.preferred?'✓ SDK ACTIVE':'SDK CHECK'}</span><span className={`text-[10px] px-2 py-1 rounded-full ${agents?.both_configured?'bg-emerald-950 text-emerald-300':'bg-yellow-950 text-yellow-300'}`}>{agents?.both_configured?'✓ 2 STUDIO AGENTS':'AGENTS SETUP'}</span></div></div><div className="grid md:grid-cols-3 gap-3">
+  <div className="soft rounded-xl p-4 border border-indigo-500/20">
+    <div className="text-[10px] text-indigo-300 uppercase tracking-wider">01 · PRIVATE ENVIRONMENTS</div>
+    <div className="font-bold mt-1">Buyer & Supplier stay separated</div>
+    <div className="text-xs text-gray-500 mt-2">Each agent has its own session and private commercial limits.</div>
+  </div>
+  <div className="soft rounded-xl p-4 border border-emerald-500/20">
+    <div className="text-[10px] text-emerald-300 uppercase tracking-wider">02 · GOVERNED AGENTS</div>
+    <div className="font-bold mt-1">Lyzr agents propose terms</div>
+    <div className="text-xs text-gray-500 mt-2">Every proposal is checked before it can change negotiation state.</div>
+  </div>
+  <div className="soft rounded-xl p-4 border border-cyan-500/20">
+    <div className="text-[10px] text-cyan-300 uppercase tracking-wider">03 · TRUSTED OUTPUT</div>
+    <div className="font-bold mt-1">Only validated deals become contracts</div>
+    <div className="text-xs text-gray-500 mt-2">Policy, legal, risk and agreement checks sit outside the model.</div>
+  </div>
+</div>
+<div className="grid md:grid-cols-4 gap-3 mt-3 text-[10px]">
+  <div className="soft rounded-xl p-3"><span className="text-gray-500">LYZR AGENTS</span><div className="font-bold text-emerald-300 mt-1">{agents?.both_configured?'✓ CONNECTED':'○ CONFIGURATION CHECK'}</div><div className="text-gray-600 mt-1">Buyer + Supplier</div></div>
+  <div className="soft rounded-xl p-3"><span className="text-gray-500">INFERENCE</span><div className="font-bold text-emerald-300 mt-1">{sdk?.installed&&sdk?.preferred?'✓ SDK READY':'✓ API / SIMULATION READY'}</div><div className="text-gray-600 mt-1">Lyzr runtime</div></div>
+  <div className="soft rounded-xl p-3"><span className="text-gray-500">SAFETY</span><div className="font-bold text-emerald-300 mt-1">✓ ENFORCED</div><div className="text-gray-600 mt-1">Policy + legal firewall</div></div>
+  <div className="soft rounded-xl p-3"><span className="text-gray-500">AUDIT</span><div className="font-bold text-emerald-300 mt-1">✓ VERIFIED</div><div className="text-gray-600 mt-1">Tamper-evident chain</div></div>
+</div>
+<div className="mt-3 rounded-xl border border-yellow-500/15 bg-yellow-950/10 px-4 py-3">
+  <div className="flex items-start gap-3">
+    <span className="text-yellow-300">ℹ</span>
+    <div><div className="text-xs font-bold text-yellow-200">Native Lyzr Responsible AI & AIMS are account-plan features</div>
+    <div className="text-[11px] text-gray-500 mt-1">This submission account does not expose those additional APIs/URLs. AutoBus therefore does not pretend they are active: deterministic governance and the local tamper-evident audit layer remain active, with compatible export support when an authorized endpoint is available.</div></div>
+  </div>
+</div></section>
+}
+
+function App(){
+ const [lyzrStatus,setLyzrStatus]=useState(null);
+ useEffect(()=>{fetch(`${API}/api/lyzr/status`).then(r=>r.json()).then(setLyzrStatus).catch(()=>setLyzrStatus(null))},[]);
+
+ // Policy guardrails (buyer/supplier envelopes) stay as their own state — they're
+ // edited independently via PolicyForm and don't change shape during a run.
+ const [buyer,setBuyer]=useState(BUYER_DEF);
+ const [supplier,setSupplier]=useState(SUPP_DEF);
+
+ // The four "who/what/how much" fields the user types in are one logical group,
+ // so they live in one object with a single updater instead of four useState pairs.
+ const [dealInputs,setDealInputs]=useState({buyerName:'Acme Corp',supplierName:'Global Supply Ltd',product:'Industrial Servo Motors',qty:500});
+ const updateDealInput=(field,value)=>setDealInputs(prev=>({...prev,[field]:value}));
+ const {buyerName,supplierName,product,qty}=dealInputs;
+
+ // Panel visibility toggles are UI-only state, grouped separately from the negotiation result.
+ const [ui,setUi]=useState({tab:'arena',showAdvanced:false,detailsOpen:false});
+ const setTab=(tab)=>setUi(prev=>({...prev,tab}));
+ const setShowAdvanced=(showAdvanced)=>setUi(prev=>({...prev,showAdvanced:typeof showAdvanced==='function'?showAdvanced(prev.showAdvanced):showAdvanced}));
+ const setDetailsOpen=(detailsOpen)=>setUi(prev=>({...prev,detailsOpen}));
+ const {tab,showAdvanced,detailsOpen}=ui;
+
+ // Everything a single "run negotiation" click produces (loading flag, result, audit
+ // trail, security test, audit-integrity check, error) moves through one reducer so
+ // these six pieces can't drift out of sync with each other.
+ const [negotiation,dispatch]=useReducer(negotiationReducer,NEGOTIATION_INITIAL);
+ const {loading,result,audit,security,auditIntegrity,error:err}=negotiation;
+ const setSecurity=(security)=>dispatch({type:'SET_SECURITY',security});
+
+ const payload={buyer,supplier,buyer_name:buyerName,supplier_name:supplierName,product_name:product,quantity:+qty};
+ const run=async()=>{
+  dispatch({type:'RUN_START'});
+  try{
+   const r=await fetch(`${API}/api/negotiations`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+   if(!r.ok)throw new Error(await r.text());
+   const d=await r.json();
+   dispatch({type:'RUN_SUCCESS',result:d});
+   const noRounds=!(d.rounds?.length);
+   if(!noRounds){setTab('arena')}else{setTab('audit');setDetailsOpen(true)}
+   if(d.negotiation_id){
+    const a=await fetch(`${API}/api/negotiations/${d.negotiation_id}/audit`);
+    dispatch({type:'SET_AUDIT',audit:(await a.json()).events||[]});
+    const v=await fetch(`${API}/api/negotiations/${d.negotiation_id}/audit/verify`);
+    dispatch({type:'SET_AUDIT_INTEGRITY',auditIntegrity:await v.json()});
+   }
+  }catch(e){dispatch({type:'RUN_ERROR',error:e.message})}
+ };
+ const lastBuyer=result?.rounds?.at(-1)?.buyer,lastSupplier=result?.rounds?.at(-1)?.supplier,lastMetrics=result?.analytics?.at(-1),ri=result?.final_risk;
+ const agreed=result?.status==='agreed';
+ const hasRounds=(result?.rounds?.length||0)>0;
+ const reset=()=>{dispatch({type:'RESET'});setTab('arena');setDetailsOpen(false);window.scrollTo({top:0,behavior:'smooth'});};
+ return <div className="min-h-screen">
+   <header className="sticky top-0 z-20 border-b border-white/10 glass"><div className="max-w-6xl mx-auto px-5 py-4 flex items-center justify-between gap-4"><div className="flex items-center gap-3"><div className="text-2xl">🤝</div><div><h1 className="font-black text-lg">AutoBus</h1><p className="text-[10px] uppercase tracking-widest text-gray-500">Autonomous B2B negotiation</p></div></div><div className="flex items-center gap-2"><span className={`text-[10px] px-2.5 py-1 rounded-full ${lyzrStatus?.live_mode_ready?'bg-emerald-950 text-emerald-300':'bg-yellow-950 text-yellow-300'}`}>{lyzrStatus?.live_mode_ready?'● LIVE':'● DEMO READY'}</span><button className="btn btn-secondary text-xs py-1.5 px-3" onClick={()=>setShowAdvanced(v=>!v)}>{showAdvanced?'Hide advanced':'Advanced'}</button></div></div></header>
+   <main className="max-w-6xl mx-auto p-5 space-y-5">
+    <section className="simple-card rounded-3xl p-6 md:p-8">
+      <div className="max-w-3xl">
+        <p className="text-[11px] uppercase tracking-[.18em] text-indigo-300 font-bold">Autonomous deal desk</p>
+        <h2 className="text-3xl md:text-4xl font-black mt-2 leading-tight">Let the agents negotiate the deal for you.</h2>
+        <p className="text-sm md:text-base text-gray-400 mt-3">Enter the basic deal details. AutoBus handles bargaining, guardrails, risk checks, and contract generation automatically.</p>
+      </div>
+      <div className="grid md:grid-cols-4 gap-3 mt-6">
+        <div className="flex items-start gap-3"><span className="step-dot">1</span><div><div className="font-bold text-sm">Describe the deal</div><div className="text-xs text-gray-500 mt-1">Who, what, and how much.</div></div></div>
+        <div className="flex items-start gap-3"><span className="step-dot">2</span><div><div className="font-bold text-sm">Start negotiation</div><div className="text-xs text-gray-500 mt-1">Buyer and supplier agents bargain.</div></div></div>
+        <div className="flex items-start gap-3"><span className="step-dot">3</span><div><div className="font-bold text-sm">Review the outcome</div><div className="text-xs text-gray-500 mt-1">See the agreed commercial terms.</div></div></div>
+        <div className="flex items-start gap-3"><span className="step-dot">4</span><div><div className="font-bold text-sm">Download contract</div><div className="text-xs text-gray-500 mt-1">Ready when the deal is approved.</div></div></div>
+      </div>
+    </section>
+
+    <section className="glass rounded-3xl p-5 md:p-6">
+      <div className="flex flex-wrap items-end justify-between gap-4 mb-5">
+        <div><p className="text-[11px] uppercase tracking-widest text-gray-500">Step 1 · Deal details</p><h3 className="text-xl font-black mt-1">What are you buying?</h3></div>
+        <span className="text-xs text-gray-500">Private business rules stay hidden from the other side.</span>
+      </div>
+      <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
+        <div><label>Your company</label><input className="friendly-input" value={buyerName} onChange={e=>updateDealInput('buyerName',e.target.value)} placeholder="e.g. Acme Corp"/></div>
+        <div><label>Supplier</label><input className="friendly-input" value={supplierName} onChange={e=>updateDealInput('supplierName',e.target.value)} placeholder="e.g. Global Supply Ltd"/></div>
+        <div><label>Product / service</label><input className="friendly-input" value={product} onChange={e=>updateDealInput('product',e.target.value)} placeholder="e.g. Industrial Servo Motors"/></div>
+        <div><label>Quantity</label><input className="friendly-input" type="number" min={1} value={qty} onChange={e=>updateDealInput('qty',e.target.value)}/></div>
+      </div>
+      <div className="mt-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl bg-white/5 border border-white/5 p-4">
+        <div><div className="font-bold">Ready to negotiate?</div><div className="text-xs text-gray-500 mt-1">The agents will work within your configured guardrails.</div></div>
+        <button className="btn btn-primary text-base px-6 py-3 sm:min-w-64" onClick={run} disabled={loading}>{loading?<span className="pulse">⚡ Agents are negotiating…</span>:'▶ Start negotiation'}</button>
+      </div>
+    </section>
+
+    <details open={showAdvanced} className="glass rounded-3xl p-5 md:p-6" onToggle={e=>setShowAdvanced(e.currentTarget.open)}>
+      <summary><div className="flex items-center justify-between gap-4"><div><p className="text-[11px] uppercase tracking-widest text-gray-500">Optional</p><h3 className="text-lg font-black mt-1">Advanced guardrails</h3><p className="text-xs text-gray-500 mt-1">Adjust price, delivery, payment, SLA, and private BATNA limits.</p></div><span className="text-xs text-indigo-300 font-bold">{showAdvanced?'Hide':'Show controls'} ▾</span></div></summary>
+      <div className="grid lg:grid-cols-2 gap-4 mt-5"><PolicyForm label="Buyer Policy" defaults={BUYER_DEF} onChange={setBuyer}/><PolicyForm label="Supplier Policy" defaults={SUPP_DEF} onChange={setSupplier}/></div>
+    </details>
+
+    {err&&<div className="p-4 rounded-2xl border border-red-900/40 bg-red-950/20 text-red-300 text-sm">❌ <b>Negotiation failed.</b> {err}</div>}
+
+    {result&&<>
+      <section className={`rounded-3xl p-6 md:p-8 border ${agreed?'border-emerald-500/25 bg-emerald-950/15':hasRounds?'border-yellow-500/20 bg-yellow-950/10':'border-red-500/20 bg-red-950/10'}`}>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-5">
+          <div><p className={`text-[11px] uppercase tracking-[.18em] font-bold ${agreed?'text-emerald-300':hasRounds?'text-yellow-300':'text-red-300'}`}>{agreed?'✅ Deal agreed':hasRounds?'⚠ Negotiation result':'⛔ No agreement reached'}</p><h2 className="text-3xl font-black mt-2">{agreed?'Here’s your deal.':hasRounds?'Negotiation complete.':'The agents could not reach a deal.'}</h2><p className="text-sm text-gray-400 mt-2">{agreed?'The commercial terms below passed the configured policy and validation checks.':(result.reason||'Review the outcome and the detailed negotiation trail below.')}</p>{!agreed&&<p className="text-xs text-gray-500 mt-1">Status: <span className="font-mono">{result.status}</span>{typeof result.audit_integrity?.events==='number'?` · ${result.audit_integrity.events} audit event${result.audit_integrity.events===1?'':'s'} recorded`:''}</p>}</div>
+          <button className="btn btn-secondary" onClick={reset}>↺ Start another deal</button>
+        </div>
+        {hasRounds?<div className="grid md:grid-cols-4 gap-3 mt-6">
+          <div className="kpi rounded-2xl p-4"><div className="text-[10px] text-gray-500">PRICE</div><div className="text-2xl font-black mt-1">₹{Number(lastBuyer?.price ?? lastSupplier?.price ?? 0).toLocaleString()}</div><div className="text-xs text-gray-500 mt-1">Latest negotiated price</div></div>
+          <div className="kpi rounded-2xl p-4"><div className="text-[10px] text-gray-500">DELIVERY</div><div className="text-2xl font-black mt-1">{lastBuyer?.delivery_days ?? lastSupplier?.delivery_days ?? '—'} days</div><div className="text-xs text-gray-500 mt-1">Agreed timeline</div></div>
+          <div className="kpi rounded-2xl p-4"><div className="text-[10px] text-gray-500">PAYMENT</div><div className="text-2xl font-black mt-1">Net {lastBuyer?.payment_days ?? lastSupplier?.payment_days ?? '—'}</div><div className="text-xs text-gray-500 mt-1">Payment term</div></div>
+          <div className="kpi rounded-2xl p-4"><div className="text-[10px] text-gray-500">RISK</div><div className={`text-2xl font-black mt-1 ${ri?.label==='LOW'?'text-emerald-300':ri?.label==='MEDIUM'?'text-yellow-300':'text-red-300'}`}>{ri?.label||'—'}</div><div className="text-xs text-gray-500 mt-1">Policy risk level</div></div>
+        </div>:<div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-5"><div className="text-sm font-bold text-gray-200">No proposals were exchanged.</div><div className="text-xs text-gray-500 mt-1">The negotiation ended before either side made an offer — open "See how the agents negotiated" below for the recorded reason.</div></div>}
+      </section>
+
+      {result.contract&&<ContractCard contract={result.contract} negId={result.negotiation_id}/>} 
+
+      <details className="glass rounded-3xl p-5 md:p-6" open={detailsOpen} onToggle={e=>setDetailsOpen(e.currentTarget.open)}>
+        <summary><div className="flex items-center justify-between gap-4"><div><p className="text-[11px] uppercase tracking-widest text-gray-500">Optional detail</p><h3 className="text-lg font-black mt-1">See how the agents negotiated</h3><p className="text-xs text-gray-500 mt-1">Charts, round-by-round proposals, trust checks, and audit history.</p></div><span className="text-xs text-indigo-300 font-bold">{detailsOpen?'Hide':'Open'} details ▾</span></div></summary>
+        <div className="mt-5 grid md:grid-cols-5 gap-3">
+          <div className="kpi rounded-2xl p-4"><div className="text-[10px] text-gray-500">ROUNDS</div><div className="text-xl font-black mt-1">{result.rounds.length}</div></div>
+          <div className="kpi rounded-2xl p-4"><div className="text-[10px] text-gray-500">CONVERGENCE</div><div className="text-xl font-black mt-1">{Math.round((result.convergence.convergence_ratio||0)*100)}%</div></div>
+          <div className="kpi rounded-2xl p-4"><div className="text-[10px] text-gray-500">JOINT UTILITY</div><div className="text-xl font-black text-emerald-300 mt-1">{Math.round((lastMetrics?.joint_utility||0)*100)}%</div></div>
+          <div className="kpi rounded-2xl p-4"><div className="text-[10px] text-gray-500">GOVERNANCE</div><div className="text-sm font-black mt-2">{result.governance?.external_responsible_ai_configured?'LYZR RAI':'LOCAL FIREWALL'}</div></div>
+          <div className="kpi rounded-2xl p-4"><div className="text-[10px] text-gray-500">AUDIT</div><div className={`text-sm font-black mt-2 ${auditIntegrity?.valid?'text-emerald-300':'text-yellow-300'}`}>{auditIntegrity?.valid?'✓ VERIFIED':'CHECKED'}</div></div>
+        </div>
+        <section className="glass rounded-2xl p-5 mt-4"><div className="flex flex-wrap gap-2 border-b border-white/10 pb-3 mb-4">{[['arena','📈 Deal path'],['rounds','📋 Round history'],['audit','🔒 Trust & audit']].map(([k,l])=><button key={k} onClick={()=>setTab(k)} className={`px-4 py-2 rounded-full text-xs font-bold ${tab===k?'bg-indigo-600 text-white':'text-gray-400 hover:text-white'}`}>{l}</button>)}</div>{tab==='arena'?<NegotiationChart rounds={result.rounds}/>:tab==='rounds'?<Rounds rounds={result.rounds}/>:<><Audit events={audit}/><div className="flex justify-end mt-3"><span className={`text-xs font-bold ${auditIntegrity?.valid?'text-emerald-300':'text-red-300'}`}>{auditIntegrity?.valid?'✓ HASH CHAIN VERIFIED':'✕ AUDIT INTEGRITY FAILED'} · {auditIntegrity?.events||0} events</span></div></>}</section>
+        <div className="grid lg:grid-cols-2 gap-4 mt-4"><AgentPanel name={buyerName} role="buyer" policy={buyer} latest={lastBuyer} metrics={lastMetrics?.buyer_utility}/><AgentPanel name={supplierName} role="supplier" policy={supplier} latest={lastSupplier} metrics={lastMetrics?.supplier_utility}/></div>
+        <ParetoPanel pareto={result.pareto}/>
+      </details>
+    </>}
+
+    <details className="glass rounded-3xl p-5 md:p-6"><summary><div className="flex items-center justify-between gap-4"><div><p className="text-[11px] uppercase tracking-widest text-gray-500">For testing & demos</p><h3 className="text-lg font-black mt-1">Security & multi-supplier tools</h3><p className="text-xs text-gray-500 mt-1">Red-team guardrail testing and 3-supplier RFQ are kept out of the main workflow.</p></div><span className="text-xs text-indigo-300 font-bold">Open tools ▾</span></div></summary><div className="grid lg:grid-cols-2 gap-5 mt-5"><SecurityPanel request={payload} security={security} setSecurity={setSecurity}/><RFQPanel payload={payload}/></div></details>
+
+    <details className="glass rounded-3xl p-5 md:p-6"><summary><div className="flex items-center justify-between gap-4"><div><p className="text-[11px] uppercase tracking-widest text-gray-500">Technical information</p><h3 className="text-lg font-black mt-1">How AutoBus is governed</h3><p className="text-xs text-gray-500 mt-1">Useful for judges, developers, and technical review.</p></div><span className="text-xs text-indigo-300 font-bold">Open architecture ▾</span></div></summary><div className="mt-5"><LyzrControlPlane status={lyzrStatus}/></div></details>
+
+    {!result&&!loading&&!err&&<div className="text-center py-8 text-gray-500"><div className="text-4xl mb-3">🤝</div><p className="text-sm">Your first negotiation is ready to start.</p><p className="text-xs mt-2">The default business rules are already loaded. Advanced guardrails are optional.</p></div>}
+   </main>
+ </div>
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script></body></html>
