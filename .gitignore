@@ -36,10 +36,10 @@ dist/
 
 # Local/runtime data
 *.log
-backend/data/*.jsonl
-backend/data/*.pdf
-backend/data/*.tmp
-backend/data/*.lock
+**/data/*.jsonl
+**/data/*.pdf
+**/data/*.tmp
+**/data/*.lock
 
 # Frontend tooling/build output
 node_modules/
