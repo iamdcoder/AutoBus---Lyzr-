@@ -12,13 +12,14 @@ from __future__ import annotations
 
 import json
 import math
-import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import requests
+
+from config import get_settings
 
 @dataclass
 class GovernanceDecision:
@@ -30,12 +31,19 @@ class GovernanceDecision:
 
 class LyzrGovernance:
     def __init__(self):
-        self.guardrail_url = os.getenv("LYZR_GUARDRAIL_URL", "").strip()
-        self.guardrail_token = os.getenv("LYZR_GUARDRAIL_TOKEN", "").strip()
-        self.aims_webhook_url = os.getenv("LYZR_AIMS_WEBHOOK_URL", "").strip()
-        self.aims_token = os.getenv("LYZR_AIMS_TOKEN", "").strip()
-        self.timeout = float(os.getenv("LYZR_GOVERNANCE_TIMEOUT", "8"))
-        self.outbox_path = Path(os.getenv("LYZR_AIMS_OUTBOX", "data/aims_outbox.jsonl"))
+        # A fresh Settings() read per instantiation (see config.py) rather
+        # than a cached module-level settings object, so re-creating a
+        # LyzrGovernance() after an environment change (a new negotiation,
+        # a redeployed secret, or a test's monkeypatch) always observes
+        # the current configuration — exactly as the previous per-call
+        # `os.getenv(...)` reads did.
+        settings = get_settings()
+        self.guardrail_url = settings.LYZR_GUARDRAIL_URL.strip()
+        self.guardrail_token = settings.LYZR_GUARDRAIL_TOKEN.strip()
+        self.aims_webhook_url = settings.LYZR_AIMS_WEBHOOK_URL.strip()
+        self.aims_token = settings.LYZR_AIMS_TOKEN.strip()
+        self.timeout = settings.LYZR_GOVERNANCE_TIMEOUT
+        self.outbox_path = Path(settings.LYZR_AIMS_OUTBOX)
         self.outbox_path.parent.mkdir(parents=True, exist_ok=True)
 
     @property

@@ -45,6 +45,8 @@ from negotiation.utility import calculate_utility, explain_tradeoff
 from negotiation.pareto import build_pareto_frontier
 from negotiation.risk import calculate_risk
 
+from config import get_settings
+
 app = FastAPI(
     title="Autonomous B2B Negotiator",
     version="3.2.0",
@@ -1080,6 +1082,44 @@ def governance_status():
         },
         "policy_authority": "deterministic_local_validator",
         "external_gate_failure_mode": "fail_closed" if governance.guardrail_url else "not_configured",
+    }
+
+@app.get("/api/system/config")
+def system_config():
+    """Expose validated, non-secret application configuration.
+
+    Every value below is read through the Pydantic ``Settings`` model in
+    ``config.py``, so a malformed value (a non-numeric timeout, for
+    example) is rejected with a clear error at startup rather than
+    reaching a request handler as an empty string. Secrets — the Lyzr API
+    key and the guardrail/AIMS bearer tokens — are reported only as a
+    boolean "configured" flag, never as their value.
+    """
+    settings = get_settings()
+    return {
+        "validated_via": "pydantic_settings.BaseSettings",
+        "lyzr": {
+            "api_key_configured": settings.lyzr_api_key_configured,
+            "base_url": settings.LYZR_BASE_URL,
+            "chat_timeout_seconds": settings.LYZR_CHAT_TIMEOUT,
+            "sdk_preferred": settings.sdk_preferred,
+            "sdk_fallback_enabled": settings.sdk_fallback_enabled,
+            "studio_agents_configured": settings.studio_agents_configured,
+        },
+        "governance": {
+            "responsible_ai_endpoint_configured": settings.responsible_ai_endpoint_configured,
+            "policy_id_configured": bool(settings.LYZR_RAI_POLICY_ID.strip()),
+            "agent_feature_check_enabled": settings.agent_feature_check_enabled,
+            "governance_timeout_seconds": settings.LYZR_GOVERNANCE_TIMEOUT,
+        },
+        "aims": {
+            "external_sink_configured": settings.aims_sink_configured,
+            "local_outbox_path": settings.LYZR_AIMS_OUTBOX,
+        },
+        "deployment": {
+            "cors_origins": settings.cors_origin_list,
+            "public_base_url": settings.PUBLIC_BASE_URL or None,
+        },
     }
 
 @app.get("/api/aims/outbox")
