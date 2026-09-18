@@ -12,7 +12,7 @@ The project is designed around the quest rubric:
 |---|---:|---|
 | **Lyzr Multi-Agent Depth** | **30%** | Two Lyzr agents, isolated Buyer/Supplier sessions, Studio configuration, Lyzr Agent API/SDK transport, Environment → Agent → Inference separation |
 | **Negotiation Logic & Guardrails** | **30%** | Multi-round bargaining, concessions, convergence/deadlock, utility/risk/Pareto analysis, policy/legal firewall, final agreement firewall |
-| **Code Architecture & Testing** | **20%** | Modular backend, deterministic governance, 46 passing tests across 15 files covering negotiation, deadlock, guardrails, legal validation, audit integrity, contract integrity and Lyzr integration |
+| **Code Architecture & Testing** | **20%** | Modular backend, deterministic governance, centralized/validated configuration, 162 passing tests across 26 files covering negotiation, deadlock, guardrails, legal validation, audit tamper-detection, contract integrity, configuration, and Lyzr integration |
 | **Visual Dashboard & UX** | **20%** | Live negotiation arena, concession analytics, security/red-team views, audit verification, RFQ/Pareto views and contract output |
 
 Full architecture detail: [`backend/docs/ARCHITECTURE.md`](backend/docs/ARCHITECTURE.md).
@@ -98,9 +98,10 @@ GET /api/architecture
 GET /api/lyzr/evidence
 GET /api/lyzr/status
 GET /api/system/governance
+GET /api/system/config
 ```
 
-These expose architecture/runtime evidence without exposing secrets.
+These expose architecture/runtime evidence without exposing secrets. `/api/system/config` reports the validated, typed configuration state (which subsystems are configured) with every secret reduced to a boolean "configured" flag — never the value.
 
 ---
 
@@ -269,13 +270,33 @@ backend/
 ├── negotiation/          rounds, concessions, convergence, deadlock, utility
 ├── samples/              judge_negotiation_input.json
 ├── scripts/              setup/bootstrap helpers
-├── tests/                15 test files, 46 tests
+├── tests/                26 test files, 162 tests
+├── config.py             centralized, validated environment configuration (pydantic Settings)
 └── main.py               API entrypoint
 
 Dockerfile                container build
 .env.example              environment template (no secrets)
+CONTRIBUTING.md            commit hygiene and PR conventions
 README.md                 this file
 ```
+
+---
+
+# Engineering Improvements Completed
+
+The following development-quality improvements are included in the current repository baseline without changing the negotiation or application behavior:
+
+| Improvement area | Completed implementation | Where to see it |
+|---|---|---|
+| **CI/CD automation** | GitHub Actions runs Python linting, source compilation, the backend test suite **with coverage reporting** (`pytest-cov`, uploaded as a build artifact on every run), Docker image builds, and an optional Render deployment trigger on pushes to `main`. Pull requests run the validation stages without deploying. | [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml) |
+| **Testing coverage** | 116 new tests added on top of the previous 46 (162 total, across 26 files), targeting the areas that previously had the thinnest coverage: policy/proposal model validators, the agreement firewall, convergence/deadlock math, engine-level accept/walk-away/revision-retry/governance-retry branches, Pareto dominance (a proposal genuinely worse for both sides), risk's CRITICAL label, contract hash *sensitivity* (not just stability), and — previously untested entirely — audit hash-chain tamper detection and the centralized configuration module. | [`backend/tests/`](backend/tests/) |
+| **Configuration management** | A centralized, validated `Settings` model (`pydantic-settings`) declares every environment variable the backend reads, with explicit types, defaults, and descriptions, so a misconfigured deployment fails fast and legibly instead of silently reaching a request handler as an empty string. Wired into `LyzrGovernance` (replacing scattered `os.getenv` calls one-for-one, with identical defaults, so behavior is unchanged) and exposed read-only, secrets-masked, at a new `GET /api/system/config` endpoint. | [`backend/config.py`](backend/config.py), [`backend/tests/test_config.py`](backend/tests/test_config.py) |
+| **Version control hygiene** | [`CONTRIBUTING.md`](CONTRIBUTING.md) documents the small-atomic-commit and conventional-commit-message convention this round of changes follows going forward, plus PR expectations (tests for new logic, `ruff`/`pytest` passing locally before pushing). | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
+| **Environment & secret hygiene** | A repository `.gitignore` excludes real environment files, local credentials/artifacts, Python caches, virtual environments, IDE files, generated runtime data, and frontend dependencies/build output. `.env.example` provides the environment configuration template without secrets. | [`.gitignore`](.gitignore), [`.env.example`](.env.example) |
+| **Maintainability comments** | Complex utility logic includes inline explanations for preference-band normalization, deterministic utility weighting, and risk calculation near hard policy boundaries. These comments explain the business reasoning rather than repeating the code. | [`backend/negotiation/utility.py`](backend/negotiation/utility.py) |
+| **Frontend state & component structure** | The dashboard uses centralized `useReducer` state for negotiation results, audit data, security data, integrity status, loading, and errors, while reusable React components keep policy forms, statistics, utility displays, and dashboard sections separated. | [`frontend/index.html`](frontend/index.html) |
+
+These items directly address the previously identified improvement areas: automated quality gates with visible coverage, materially deeper test coverage of the negotiation/guardrail/audit core, type-safe and validated configuration, a documented commit convention, safer deployment configuration, clearer business-logic maintainability, and a more structured frontend state model. None of them change negotiation, guardrail, contract, or audit *behavior* — every wiring change (config.py into `LyzrGovernance`) was made to preserve the exact previous defaults and semantics, and is covered by tests that pin that behavior down.
 
 ---
 
@@ -283,10 +304,11 @@ README.md                 this file
 
 ```bash
 cd backend
-pytest -q
+pip install -r requirements.txt pytest-cov
+pytest -q --cov=. --cov-report=term-missing
 ```
 
-46 tests across 15 files, all passing at time of writing: `test_negotiation`, `test_deadlock`, `test_guardrails`, `test_policy`, `test_legal_validator`, `test_governance`, `test_audit`, `test_contract`, `test_contract_integrity`, `test_lyzr_client`, `test_lyzr_integration`, `test_lyzr_surfaces`, `test_api_demo`, `test_integration`, `test_winning_features`.
+162 tests across 26 files, all passing at time of writing. In addition to the original `test_negotiation`, `test_deadlock`, `test_guardrails`, `test_policy`, `test_legal_validator`, `test_governance`, `test_audit`, `test_contract`, `test_contract_integrity`, `test_lyzr_client`, `test_lyzr_integration`, `test_lyzr_surfaces`, `test_api_demo`, `test_integration`, `test_winning_features`, the suite now also includes `test_config`, `test_policy_validation_edge_cases`, `test_proposal_model`, `test_agreement_validator`, `test_negotiation_math`, `test_utility_and_pareto_extra`, `test_engine_edge_cases`, `test_contract_extra`, `test_audit_tamper_detection`, `test_governance_extra`, and `test_policy_and_legal_supplement`.
 
 ---
 

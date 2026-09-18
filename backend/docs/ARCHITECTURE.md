@@ -6,6 +6,18 @@ This is the full technical reference. For the judge-facing summary and rubric ma
 
 AutoBus separates **model capability** from **business authority**. Lyzr agents can propose negotiation moves, but the application — not the LLM — owns the authoritative negotiation state and contract decision.
 
+## 1.1 Engineering-quality controls
+
+The repository also includes development and maintainability controls around the architecture described below:
+
+- **CI/CD:** `.github/workflows/ci-cd.yml` validates pull requests and `main` pushes with linting, Python compilation, tests **with coverage reporting** (uploaded as a downloadable build artifact), Docker builds, and an optional Render deployment hook.
+- **Configuration management:** `backend/config.py` centralizes every environment variable the backend reads into a single validated, typed `pydantic-settings` `Settings` model (with defaults matching the previous `os.getenv(...)` call sites exactly, so this is a behavior-preserving refactor). `LyzrGovernance` is wired to it; every value is exposed, secrets masked, at `GET /api/system/config`.
+- **Testing:** 162 tests across 26 files (up from 46/15). The additions specifically target previously-thin areas: model validators, the agreement firewall in isolation, convergence/deadlock arithmetic (hand-verified against the documented formula), engine-level accept/walk-away/revision-retry/governance-retry branches, Pareto dominance with a genuinely-dominated point, and — previously entirely untested — audit hash-chain tamper detection and the new configuration module.
+- **Version control hygiene:** [`../../CONTRIBUTING.md`](../../CONTRIBUTING.md) documents the small-atomic-commit convention this round of changes follows.
+- **Environment hygiene:** `.gitignore` excludes real `.env` files and local/runtime artifacts, while `.env.example` documents the expected environment surface without credentials.
+- **Business-logic documentation:** `backend/negotiation/utility.py` explains the scoring bands, utility weighting, and normalized risk calculation at the point where those decisions are implemented.
+- **Frontend structure:** `frontend/index.html` uses a centralized React reducer for negotiation-level state and keeps repeated dashboard concerns in reusable components.
+
 ## 2. Environment → Agent → Inference
 
 ```text
@@ -109,4 +121,5 @@ Every meaningful state transition is appended to a tamper-evident local hash cha
 
 - `agents/lyzr/environment_manifest.json` — Environment → Agent → Inference mapping.
 - [`LYZR_EVIDENCE.md`](LYZR_EVIDENCE.md) — Lyzr capability evidence, subscription boundaries, and Agent ID setup.
+- `../config.py` — centralized, validated environment configuration.
 - `../samples/judge_negotiation_input.json` — the reproducible sample negotiation payload.
