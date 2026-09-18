@@ -8,7 +8,16 @@ handler. This module is purely additive: introducing it does not change
 any existing negotiation, guardrail, or governance behavior. Field
 defaults mirror the previous ``os.getenv(NAME, default)`` call sites
 exactly, so wiring a module over to ``Settings`` is a behavior-preserving
-refactor, not a functional change.
+refactor for every currently-used configuration value.
+
+One deliberate, narrow exception: ``LYZR_CHAT_TIMEOUT`` and
+``LYZR_GOVERNANCE_TIMEOUT`` are constrained to ``gt=0``. The previous
+``float(os.getenv(...))`` calls would have silently accepted a zero or
+negative timeout (a value that could never have produced a working
+request); this module rejects it at startup instead. This is the one
+place where "behavior-preserving" means "preserves every value that was
+ever meaningfully usable," not "byte-for-byte identical for every
+conceivable input."
 
 ``get_settings()`` intentionally returns a *fresh* ``Settings()`` instance
 on every call rather than a cached singleton (e.g. via ``lru_cache``, a
