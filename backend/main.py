@@ -372,7 +372,7 @@ def lyzr_evidence():
     sdk_error = None
     if key_ready:
         try:
-            import lyzr  # noqa: F401
+            import lyzr  
             sdk_installed = True
         except Exception as exc:
             sdk_error = str(exc)
@@ -387,7 +387,6 @@ def lyzr_evidence():
 
 @app.get("/api/lyzr/status")
 def lyzr_status():
-    """Report live Lyzr configuration without exposing the API key."""
     configured = bool(os.getenv("LYZR_API_KEY"))
     buyer_id = os.getenv("BUYER_AGENT_ID", "").strip()
     supplier_id = os.getenv("SUPPLIER_AGENT_ID", "").strip()
@@ -437,7 +436,6 @@ def lyzr_status():
 
 @app.post("/api/lyzr/bootstrap")
 def lyzr_bootstrap():
-    """Discover existing AutoBus agents and persist only their IDs locally."""
     if not os.getenv("LYZR_API_KEY"):
         raise HTTPException(status_code=400, detail="Set LYZR_API_KEY in .env first.")
     try:
@@ -453,13 +451,6 @@ def lyzr_bootstrap():
 
 @app.post("/api/governance/lyzr-custom-guardrail")
 def lyzr_custom_guardrail(payload: dict):
-    """
-    Endpoint intended for Lyzr Responsible AI > Custom Guardrails.
-
-    It returns the schema Lyzr documents for custom guardrails: a 2xx response
-    plus verdict=allow|deny. Numerical business policy enforcement remains in
-    the application's independent deterministic validators.
-    """
     verdict = "allow"
     reason = "No governance violation detected."
     rule = "autobus-governance-v1"
@@ -1086,15 +1077,6 @@ def governance_status():
 
 @app.get("/api/system/config")
 def system_config():
-    """Expose validated, non-secret application configuration.
-
-    Every value below is read through the Pydantic ``Settings`` model in
-    ``config.py``, so a malformed value (a non-numeric timeout, for
-    example) is rejected with a clear error at startup rather than
-    reaching a request handler as an empty string. Secrets — the Lyzr API
-    key and the guardrail/AIMS bearer tokens — are reported only as a
-    boolean "configured" flag, never as their value.
-    """
     settings = get_settings()
     return {
         "validated_via": "pydantic_settings.BaseSettings",
@@ -1124,12 +1106,10 @@ def system_config():
 
 @app.get("/api/aims/outbox")
 def aims_outbox_status():
-    """Expose AIMS-ready queue metadata without exposing event secrets."""
     return LyzrGovernance().outbox_status()
 
 @app.post("/api/rfq")
 def run_rfq(request: RFQRequest):
-    """Run a lightweight buyer-vs-many-suppliers RFQ in simulation mode."""
     if not request.suppliers:
         raise HTTPException(status_code=400, detail="At least one supplier is required")
     results = []

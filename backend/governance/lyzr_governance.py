@@ -1,12 +1,3 @@
-"""Lyzr governance adapters with a strong deterministic fallback.
-
-The fallback is intentionally useful in offline/demo deployments: it performs
-secret-leakage, prompt-injection, structural and numeric sanity checks instead
-of becoming a permissive pass-through. When a Lyzr Responsible AI custom
-Guardrail endpoint is configured, that external decision is authoritative and
-fail-closed. Audit events are always normalized to an AIMS-ready envelope and
-spooled locally when no external sink is configured.
-"""
 
 from __future__ import annotations
 
@@ -31,12 +22,12 @@ class GovernanceDecision:
 
 class LyzrGovernance:
     def __init__(self):
-        # A fresh Settings() read per instantiation (see config.py) rather
-        # than a cached module-level settings object, so re-creating a
-        # LyzrGovernance() after an environment change (a new negotiation,
-        # a redeployed secret, or a test's monkeypatch) always observes
-        # the current configuration — exactly as the previous per-call
-        # `os.getenv(...)` reads did.
+        
+        
+        
+        
+        
+        
         settings = get_settings()
         self.guardrail_url = settings.LYZR_GUARDRAIL_URL.strip()
         self.guardrail_token = settings.LYZR_GUARDRAIL_TOKEN.strip()

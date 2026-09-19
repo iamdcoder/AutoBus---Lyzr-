@@ -7,7 +7,6 @@ from pathlib import Path
 from audit.models import AuditEvent, AuditEventType
 
 class AuditLogger:
-    """Append-only local audit log with a tamper-evident hash chain."""
 
     def __init__(self, path: str = "data/audit.jsonl"):
         self.path = Path(path)

@@ -5,7 +5,6 @@ from typing import Any
 
 
 class LyzrSDKClient:
-    """Thin adapter around the Lyzr ADK Studio/Agent interface."""
 
     def __init__(self):
         try:

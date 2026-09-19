@@ -2,10 +2,6 @@ from models.proposal import NegotiationProposal
 from models.validation import ValidationResult, ValidationStatus
 
 class LegalValidator:
-    """Deterministic legal/commercial sanity firewall.
-
-    This intentionally checks only rules encoded by the application; it is not legal advice.
-    """
 
     @staticmethod
     def validate(proposal: NegotiationProposal) -> ValidationResult:

@@ -1,9 +1,3 @@
-"""Create a reusable Lyzr Responsible AI policy for AutoBus.
-
-This script creates the policy in Lyzr. Policy assignment to Buyer/Supplier
-agents is intentionally left to Lyzr Studio because the current Studio flow
-supports assigning the created policy from the agent's Responsible AI feature.
-"""
 from __future__ import annotations
 
 import json

@@ -1,9 +1,3 @@
-"""
-Lyzr bootstrap helpers for AutoBus.
-
-This module never stores an API key in source code. It reads LYZR_API_KEY from
-the environment, discovers existing agents, and writes only non-secret agent IDs.
-"""
 from __future__ import annotations
 
 import json

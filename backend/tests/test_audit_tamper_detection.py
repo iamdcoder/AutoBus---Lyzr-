@@ -1,14 +1,3 @@
-"""Tamper-detection coverage for audit/logger.py's ``verify()``.
-
-test_audit.py only checks that events get written; nothing previously
-exercised the actual tamper-evidence property the project's "immutable
-audit trail" claim rests on. These tests write a real event chain to a
-temp file, hand-corrupt it exactly the way an attacker (or a disk error)
-would, and confirm ``verify()`` actually notices — on both of its two
-failure paths: a record whose own content no longer matches its stored
-hash, and a record whose stored hash no longer matches what the *next*
-record's ``previous_hash`` points to (a broken chain link).
-"""
 
 import json
 
@@ -64,8 +53,8 @@ def test_verify_detects_a_record_whose_content_no_longer_matches_its_hash(tmp_pa
 
     lines = log_path.read_text(encoding="utf-8").splitlines()
     first = json.loads(lines[0])
-    # Tamper with the content but leave the stored event_hash exactly as
-    # it was computed for the original (untampered) record.
+    
+    
     first["actor"] = "attacker_controlled_actor"
     lines[0] = json.dumps(first, sort_keys=True)
     log_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -82,10 +71,10 @@ def test_verify_detects_a_broken_chain_link_between_records(tmp_path):
 
     lines = log_path.read_text(encoding="utf-8").splitlines()
     first = json.loads(lines[0])
-    # Tamper with the first record *and* recompute its own hash so it is
-    # internally self-consistent — the only way to detect this kind of
-    # tampering is by checking the *next* record's `previous_hash`
-    # against what the (now different) first record's hash actually is.
+    
+    
+    
+    
     first["actor"] = "attacker_controlled_actor"
     payload = dict(first)
     payload.pop("event_hash", None)
@@ -95,7 +84,7 @@ def test_verify_detects_a_broken_chain_link_between_records(tmp_path):
 
     result = logger.verify()
     assert result["valid"] is False
-    assert result["events"] == 1  # the (self-consistent) first record still counts
+    assert result["events"] == 1  
     assert result["broken_at"] == 2
 
 

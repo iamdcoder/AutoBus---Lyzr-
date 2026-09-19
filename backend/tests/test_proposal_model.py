@@ -1,11 +1,3 @@
-"""Coverage for models/proposal.py and models/validation.py.
-
-Neither of these small-but-critical modules had a dedicated test file:
-`validate_acceptance` on NegotiationProposal is the guard that keeps
-`accepted_offer` meaningful (it is read by NegotiationEngine to decide
-whose terms are being accepted), and ValidationResult's defaults are
-relied on implicitly throughout guardrails/.
-"""
 
 import pytest
 
@@ -88,6 +80,6 @@ def test_validation_result_violations_default_is_not_shared_between_instances():
     first = ValidationResult(status=ValidationStatus.BLOCKED, reason="x")
     first.violations.append("oops")
     second = ValidationResult(status=ValidationStatus.BLOCKED, reason="y")
-    # Guards against a classic mutable-default-argument bug: each instance
-    # must get its own list, not a list shared across every ValidationResult.
+    
+    
     assert second.violations == []

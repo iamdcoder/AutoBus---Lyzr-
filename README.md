@@ -252,6 +252,89 @@ Never place the API key in source control.
 
 ---
 
+# Complete Feature Reference
+
+This section catalogs every endpoint and every dashboard capability in the current build. For the *why* behind each negotiation/guardrail formula, see [`backend/docs/ARCHITECTURE.md`](backend/docs/ARCHITECTURE.md#6-negotiation-intelligence).
+
+## API endpoints
+
+| Method & path | Purpose |
+|---|---|
+| `GET /` | Serves the dashboard (`frontend/index.html`). |
+| `GET /health` | Liveness/version check (`status`, `service`, `version`). |
+| `GET /ui` | Same dashboard as `/`, hidden from the OpenAPI schema. |
+| `POST /api/negotiations` | Runs a full Buyer-vs-Supplier negotiation to completion (or deadlock/walk-away) and returns the negotiation ID, status, rounds, final proposal, contract, analytics, and audit-integrity summary. |
+| `GET /api/negotiations/{id}/contract` | The generated `B2BContract` as JSON (404 if the negotiation never reached agreement). |
+| `GET /api/negotiations/{id}/audit` | The raw list of audit events recorded for a negotiation. |
+| `GET /api/negotiations/{id}/audit/verify` | Recomputes the SHA-256 hash chain and reports `{valid, events, broken_at}`. |
+| `GET /api/negotiations/{id}/pdf` | Downloads the contract as a generated PDF. |
+| `GET /api/negotiations/{id}/analytics` | Convergence, utility, risk, and Pareto-frontier analytics for a completed negotiation. |
+| `POST /api/stress-test` | Runs 6 deliberately invalid proposals (buyer-over-budget, supplier-below-floor, delivery/payment/SLA-penalty/uptime violations) through the guardrails and reports how many were blocked. |
+| `POST /api/rfq` | Runs one buyer policy against N supplier policies, ranks the outcomes by joint utility, and returns a winner. |
+| `GET /api/architecture` | Environment → Agent → Inference → Governance → Contract → Audit layer status. |
+| `GET /api/lyzr/evidence` | Lyzr capability/configuration evidence (API, SDK, Studio agents, RAI, AIMS) with all secrets masked. |
+| `GET /api/lyzr/status` | Live Lyzr connectivity check: agent count, agent feature flags (when `LYZR_VERIFY_AGENT_FEATURES=1`), and `live_mode_ready`. |
+| `POST /api/lyzr/bootstrap` | Discovers the `AutoBus Buyer Agent` / `AutoBus Supplier Agent` Studio agents and returns their IDs. |
+| `POST /api/governance/lyzr-custom-guardrail` | The adapter endpoint Lyzr Responsible AI can call as a custom guardrail; returns `{verdict: allow|deny, reason, rule}`. |
+| `GET /api/system/governance` | Governance subsystem status: mode, whether RAI/AIMS are configured, the local-fallback check list, and fail-closed behavior. |
+| `GET /api/system/config` | The full validated `Settings` snapshot, secrets reduced to booleans. |
+| `GET /api/aims/outbox` | Count and path of AIMS-envelope events currently queued in the local outbox. |
+
+## Negotiation engine
+
+- Multi-round bargaining (`NegotiationEngine.run`) with a configurable `max_rounds` per party (default 10, capped at 50).
+- Per-proposal revision retries (`max_revisions_per_round`, default 2) — a guardrail-blocked proposal gets specific revision feedback and another attempt before the round is abandoned, rather than failing the whole negotiation on the first miss.
+- Deterministic **or** live-Lyzr agent generation — `SimulationBuyerAgent`/`SimulationSupplierAgent` (`backend/main.py`) reproduce the verified sample outcome with zero external calls; `BuyerAgent`/`SupplierAgent` (`agents/`) drive the same interface against real Lyzr Studio agents.
+- Convergence tracking (weighted price/delivery/payment/SLA gap every round) and deadlock/stagnation detection (repeated-offer threshold or a non-decreasing 3-round gap trend).
+- Joint-feasible-zone projection — an arbiter step that nudges an already policy-valid proposal toward a genuine overlap between both parties' hard limits, without ever crossing either one.
+- Independent per-party utility scoring (5 weighted components) and a 0–100 commercial risk score with CRITICAL/HIGH/MEDIUM/LOW labeling.
+- Pareto-efficiency analysis across every proposal made during a negotiation.
+- Multi-supplier RFQ mode — one buyer policy evaluated against several supplier policies in one call, ranked by joint utility.
+
+## Guardrails & governance
+
+- **`PolicyValidator`** — enforces each party's private numeric bounds (price ceiling/floor, delivery max, payment min, SLA penalty band, SLA uptime min).
+- **`LegalValidator`** — five mandatory, policy-independent legal/commercial sanity rules, each with a stable rule ID.
+- **`GuardrailEngine`** — the per-round guardrail pipeline (policy → legal, first-block-wins).
+- **`AgreementValidator`** — the agreement firewall: re-validates the full candidate deal against *both* parties plus legal rules before it can become a contract.
+- **`LyzrGovernance`** — local deterministic checks (private-data-leakage scan, prompt-injection scan, proposal-schema check, numeric-sanity check) that run unconditionally, plus an optional external Lyzr Responsible AI guardrail call that fails closed on error.
+- **AIMS-compatible audit export** — normalized `autobus.aims-event.v1` events, sent to an authorized external sink when configured or queued in a local JSONL outbox otherwise.
+- **Environment isolation** (`AgentEnvironment`) — a forbidden-field blocklist (BATNA, min/max price, reservation/walk-away price, raw policy) that nothing can bypass on the way into the shared negotiation channel.
+
+## Contract & audit
+
+- Structured `B2BContract` generation (JSON) with a canonical, sorted-key SHA-256 payload hash and a `version` field.
+- One-page PDF contract rendering (ReportLab) with the same fields plus a negotiation-record summary, downloadable per negotiation.
+- Tamper-evident local audit chain — every meaningful transition is SHA-256-hash-linked to the previous event; `verify()` recomputes the whole chain and reports exactly where it breaks, if anywhere.
+- 16 distinct audit event types spanning negotiation start through contract generation and governance events.
+
+## Configuration & deployment
+
+- Centralized, validated `pydantic-settings` configuration (`backend/config.py`) covering Lyzr transport, Studio agent IDs, Responsible AI/governance, AIMS, and deployment (CORS, public URL) — with startup-time validation (e.g. timeouts must be positive) instead of silent misconfiguration.
+- Deterministic **no-credential simulation mode** for local/offline running and judging.
+- Live Lyzr mode via four environment variables (`LYZR_API_KEY`, `BUYER_AGENT_ID`, `SUPPLIER_AGENT_ID`, `LYZR_USER_ID`).
+- Docker build (`Dockerfile`) and a GitHub Actions CI/CD pipeline (lint, compile, test-with-coverage, Docker build, optional Render deploy hook).
+- Windows setup/run scripts and cross-platform Lyzr Studio agent bootstrap scripts (`backend/scripts/`).
+
+## Frontend dashboard (`frontend/index.html`, single-file React, zero build step)
+
+- Editable Buyer/Supplier policy forms (price, delivery, payment, SLA, BATNA, max rounds) with an "Advanced" toggle for raw JSON editing.
+- One-click negotiation run against `POST /api/negotiations`, with loading and error states managed by a centralized `useReducer`.
+- Deal-outcome header (agreed / no-agreement / partial) with live status and audit-event count.
+- Tabbed results: **Deal path** (price-convergence chart across rounds), **Round history** (per-round buyer/supplier price, gap, and action table), **Trust & audit** (event stream plus a hash-chain-verified badge).
+- Contract card with one-click **PDF** and **JSON** downloads.
+- **Adversarial Guardrail Lab** — runs the 6-attack stress test from the UI and shows attempts/blocked/enforcement-rate plus a per-attack pass/fail indicator.
+- **Pareto frontier panel** — table of every historical proposal's buyer/supplier/joint utility with a PARETO/dominated tag.
+- **Multi-vendor RFQ panel** — runs the buyer against three predefined supplier policies and highlights the recommended winner.
+- **Lyzr control-plane strip** — "Powered by Lyzr" status badges (SDK active, both Studio agents configured) sourced live from `/api/architecture` and `/api/lyzr/evidence`.
+- Header **LIVE / DEMO READY** badge driven by `/api/lyzr/status.live_mode_ready`.
+
+## Testing
+
+162 tests across 26 files — see the [Testing](#testing) section below for the full file list and how to run them.
+
+---
+
 # Repository Structure
 
 ```text
@@ -293,7 +376,7 @@ The following development-quality improvements are included in the current repos
 | **Configuration management** | A centralized, validated `Settings` model (`pydantic-settings`) declares every environment variable the backend reads, with explicit types, defaults, and descriptions, so a misconfigured deployment fails fast and legibly instead of silently reaching a request handler as an empty string. Wired into `LyzrGovernance` (replacing scattered `os.getenv` calls one-for-one, with identical defaults). The one deliberate behavior change: the two timeout fields now reject a zero or negative value at startup instead of silently accepting a value that could never have worked; every other field's parsing is unchanged. Exposed read-only, secrets-masked, at a new `GET /api/system/config` endpoint. | [`backend/config.py`](backend/config.py), [`backend/tests/test_config.py`](backend/tests/test_config.py) |
 | **Version control hygiene** | [`CONTRIBUTING.md`](CONTRIBUTING.md) documents the small-atomic-commit and conventional-commit-message convention this round of changes follows going forward, plus PR expectations (tests for new logic, `ruff`/`pytest` passing locally before pushing). | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
 | **Environment & secret hygiene** | A repository `.gitignore` excludes real environment files, local credentials/artifacts, Python caches, virtual environments, IDE files, generated runtime data, and frontend dependencies/build output. `.env.example` provides the environment configuration template without secrets. | [`.gitignore`](.gitignore), [`.env.example`](.env.example) |
-| **Maintainability comments** | Complex utility logic includes inline explanations for preference-band normalization, deterministic utility weighting, and risk calculation near hard policy boundaries. These comments explain the business reasoning rather than repeating the code. | [`backend/negotiation/utility.py`](backend/negotiation/utility.py) |
+| **Maintainability documentation** | This build intentionally ships with zero inline `#` comments and zero docstrings anywhere in `agents/` or `backend/` — every file was verified comment-free with Python's `tokenize` module, not a text search. Business-logic reasoning that would otherwise live in a comment (preference-band normalization, utility weighting, risk calculation near hard policy boundaries) is instead written out in full in [`backend/docs/ARCHITECTURE.md`](backend/docs/ARCHITECTURE.md) and the [Complete Feature Reference](#complete-feature-reference) below. | [`backend/negotiation/utility.py`](backend/negotiation/utility.py), [`backend/docs/ARCHITECTURE.md`](backend/docs/ARCHITECTURE.md) |
 | **Frontend state & component structure** | The dashboard uses centralized `useReducer` state for negotiation results, audit data, security data, integrity status, loading, and errors, while reusable React components keep policy forms, statistics, utility displays, and dashboard sections separated. | [`frontend/index.html`](frontend/index.html) |
 
 These items directly address the previously identified improvement areas: automated quality gates with visible coverage, materially deeper test coverage of the negotiation/guardrail/audit core, type-safe and validated configuration, a documented commit convention, safer deployment configuration, clearer business-logic maintainability, and a more structured frontend state model. None of them change negotiation, guardrail, contract, or audit *behavior*. The `config.py` wiring into `LyzrGovernance` preserves every previous default and parsing rule, with one narrow, deliberate exception noted above (rejecting non-positive timeouts) — everything else is covered by tests that pin the preserved behavior down.

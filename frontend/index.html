@@ -45,8 +45,8 @@ const RFQ_DEFS=[
  {name:"Atlas Motion",policy:{...SUPP_DEF,price:{target:121000,minimum:108000},payment:{preferred_days:45,minimum_days:20},sla:{minimum_uptime:99,minimum_penalty:1,maximum_penalty:5}}}
 ];
 
-// Tracks everything produced by a single "run negotiation" click as one unit,
-// instead of six separate useState flags that had to be kept in sync by hand.
+
+
 const NEGOTIATION_INITIAL={loading:false,result:null,audit:[],security:null,auditIntegrity:null,error:null};
 function negotiationReducer(state,action){
  switch(action.type){
@@ -105,12 +105,12 @@ function NegotiationChart({rounds}){
 
 function Rounds({rounds}){return <div className="overflow-auto max-h-72"><table className="w-full text-xs"><thead><tr className="text-gray-500 border-b border-white/10"><th className="text-left py-2">Round</th><th className="text-right">Buyer</th><th className="text-right">Supplier</th><th className="text-right">Gap</th><th className="text-center">Actions</th></tr></thead><tbody>{(rounds||[]).map(r=><tr key={r.round} className="border-b border-white/5"><td className="py-2 font-mono">R{r.round}</td><td className="text-right text-indigo-300">₹{r.buyer.price.toLocaleString()}</td><td className="text-right text-pink-300">₹{r.supplier.price.toLocaleString()}</td><td className="text-right text-emerald-300">{r.gap.toFixed(3)}</td><td className="text-center"><Badge text={r.buyer.action} type={r.buyer.action}/> <Badge text={r.supplier.action} type={r.supplier.action}/></td></tr>)}</tbody></table></div>}
 
-// The negotiation engine reports outcomes through `status`, not just `event_type` —
-// e.g. a "policy_check" or "agreement_validation" event can itself carry
-// status "blocked", and "proposal_generated"/"agreement_reached" events can carry
-// status "agreed" or "approved". Classify by the actual status string the backend
-// sent, so every real blocked/approved observation is shown correctly instead of
-// only the two event types that happened to be special-cased before.
+
+
+
+
+
+
 const AUDIT_NEGATIVE_STATUSES=new Set(['blocked','deadlock','walk_away','error']);
 const AUDIT_POSITIVE_STATUSES=new Set(['success','agreed','allowed','approved']);
 
@@ -120,9 +120,9 @@ function Audit({events}){
   const negative=AUDIT_NEGATIVE_STATUSES.has(e.status);
   const positive=AUDIT_POSITIVE_STATUSES.has(e.status);
   const icon=e.event_type==='proposal_blocked'?'🚫':e.event_type==='deadlock'?'⛔':e.event_type==='agreement_reached'?'✅':negative?'⚠':positive?'✅':'📋';
-  // Surface whatever observation the backend logged for this event — a blocked-proposal
-  // violation, a deadlock/failure reason, an error message, or any other detail payload —
-  // instead of only ever showing violations (which left every other event with no explanation).
+
+
+
   const note=e.details?.violations?.[0]
     ?? e.details?.reason
     ?? e.details?.error
@@ -185,27 +185,27 @@ function App(){
  const [lyzrStatus,setLyzrStatus]=useState(null);
  useEffect(()=>{fetch(`${API}/api/lyzr/status`).then(r=>r.json()).then(setLyzrStatus).catch(()=>setLyzrStatus(null))},[]);
 
- // Policy guardrails (buyer/supplier envelopes) stay as their own state — they're
- // edited independently via PolicyForm and don't change shape during a run.
+
+
  const [buyer,setBuyer]=useState(BUYER_DEF);
  const [supplier,setSupplier]=useState(SUPP_DEF);
 
- // The four "who/what/how much" fields the user types in are one logical group,
- // so they live in one object with a single updater instead of four useState pairs.
+
+
  const [dealInputs,setDealInputs]=useState({buyerName:'Acme Corp',supplierName:'Global Supply Ltd',product:'Industrial Servo Motors',qty:500});
  const updateDealInput=(field,value)=>setDealInputs(prev=>({...prev,[field]:value}));
  const {buyerName,supplierName,product,qty}=dealInputs;
 
- // Panel visibility toggles are UI-only state, grouped separately from the negotiation result.
+
  const [ui,setUi]=useState({tab:'arena',showAdvanced:false,detailsOpen:false});
  const setTab=(tab)=>setUi(prev=>({...prev,tab}));
  const setShowAdvanced=(showAdvanced)=>setUi(prev=>({...prev,showAdvanced:typeof showAdvanced==='function'?showAdvanced(prev.showAdvanced):showAdvanced}));
  const setDetailsOpen=(detailsOpen)=>setUi(prev=>({...prev,detailsOpen}));
  const {tab,showAdvanced,detailsOpen}=ui;
 
- // Everything a single "run negotiation" click produces (loading flag, result, audit
- // trail, security test, audit-integrity check, error) moves through one reducer so
- // these six pieces can't drift out of sync with each other.
+
+
+
  const [negotiation,dispatch]=useReducer(negotiationReducer,NEGOTIATION_INITIAL);
  const {loading,result,audit,security,auditIntegrity,error:err}=negotiation;
  const setSecurity=(security)=>dispatch({type:'SET_SECURITY',security});

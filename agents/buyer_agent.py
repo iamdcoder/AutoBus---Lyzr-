@@ -176,11 +176,11 @@ Never include "accepted_offer" alongside "offer", "counter", or "walk_away".
                 text.strip()
             )
 
-        # Defensive normalization: some agent responses include
-        # "accepted_offer" even on a non-accept action despite the prompt
-        # instructing otherwise. That field is only meaningful for an
-        # "accept" action, so drop it rather than let a strict-schema
-        # rejection burn a revision attempt over an irrelevant field.
+        
+        
+        
+        
+        
         if data.get("action") != "accept" and data.get("accepted_offer") is not None:
             data = {**data, "accepted_offer": None}
 

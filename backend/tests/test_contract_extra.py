@@ -1,10 +1,3 @@
-"""Additional coverage for contract/generator.py, complementing
-test_contract.py (creation + PDF) and test_contract_integrity.py (hash
-stability). test_contract_integrity.py proves the hash is *stable* when
-recomputed; this file proves the reverse — that it actually changes when
-the contract's terms change, which is the property that makes it useful
-as a tamper-evidence check in the first place.
-"""
 
 import json
 
@@ -80,9 +73,9 @@ def test_contract_to_json_round_trips_every_field():
 
 
 def test_two_contracts_from_identical_terms_still_get_distinct_ids():
-    # contract_id is generated fresh (uuid4-based) on every call, so two
-    # contracts negotiated with identical commercial terms must not be
-    # confusable with one another.
+    
+    
+    
     first = make_contract()
     second = make_contract()
     assert first.contract_id != second.contract_id

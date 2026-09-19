@@ -14,9 +14,9 @@ class UtilityResult:
     rationale: str
 
 def _band_score(value: float, best: float, worst: float, higher_is_better: bool) -> float:
-    # Normalize a proposal into the [0, 1] preference band defined by the
-    # party policy. A value at the preferred point scores 1; the hard
-    # boundary scores 0. The direction flips for buyer/supplier trade-offs.
+    
+    
+    
     if higher_is_better:
         if value >= best:
             return 1.0
@@ -75,9 +75,9 @@ def calculate_utility(
         "sla_penalty": round(_sla_penalty_score(proposal.sla_penalty, policy), 4),
     }
 
-    # Keep the weighting deterministic so every proposal can be compared on
-    # the same commercial dimensions across negotiation rounds. Price carries
-    # the largest weight, while SLA terms still contribute to the final score.
+    
+    
+    
     total = (
         components["price"] * 0.45
         + components["delivery"] * 0.20
@@ -96,9 +96,9 @@ def calculate_utility(
     margins.append((proposal.sla_uptime - policy.sla.minimum_uptime) / max(100 - policy.sla.minimum_uptime, 1))
     margins.append((policy.sla.maximum_penalty - proposal.sla_penalty) / max(policy.sla.maximum_penalty, 1))
 
-    # Risk is the inverse of the remaining normalized margin to each hard
-    # boundary. Clamping each margin prevents one unusually favorable or bad
-    # dimension from dominating the aggregate risk score.
+    
+    
+    
     average_margin = sum(max(0.0, min(1.0, m)) for m in margins) / len(margins)
     risk_score = round(max(0.0, min(100.0, 100.0 * (1.0 - average_margin))), 1)
 

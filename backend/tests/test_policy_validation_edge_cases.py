@@ -1,11 +1,3 @@
-"""Edge-case coverage for the Pydantic validators in models/policy.py.
-
-test_policy.py already covers the happy path and a simple negative price
-rejection for PricePolicy. This file rounds out the remaining bound
-checks (delivery, payment, SLA, and PartyPolicy.max_rounds) so every
-`model_validator` in models/policy.py has at least one passing and one
-failing case exercised directly.
-"""
 
 import pytest
 
@@ -31,7 +23,7 @@ def make_full_policy(**overrides):
     return PartyPolicy(**data)
 
 
-# --- PricePolicy ------------------------------------------------------
+
 
 
 def test_price_minimum_cannot_exceed_maximum():
@@ -50,14 +42,14 @@ def test_price_target_cannot_exceed_maximum():
 
 
 def test_price_policy_without_bounds_is_valid():
-    # minimum/maximum are optional (buyer knows only its ceiling, supplier
-    # only its floor, in the common asymmetric-information setup).
+    
+    
     policy = PricePolicy(target=100)
     assert policy.minimum is None
     assert policy.maximum is None
 
 
-# --- DeliveryPolicy -----------------------------------------------------
+
 
 
 def test_delivery_target_cannot_exceed_maximum():
@@ -75,7 +67,7 @@ def test_delivery_days_must_be_positive():
         DeliveryPolicy(target_days=0, maximum_days=45)
 
 
-# --- PaymentPolicy --------------------------------------------------------
+
 
 
 def test_preferred_payment_days_cannot_be_below_minimum():
@@ -88,7 +80,7 @@ def test_preferred_payment_days_equal_to_minimum_is_valid():
     assert policy.preferred_days == policy.minimum_days == 30
 
 
-# --- SLAPolicy --------------------------------------------------------------
+
 
 
 def test_sla_minimum_penalty_cannot_exceed_maximum_penalty():
@@ -103,7 +95,7 @@ def test_sla_uptime_must_be_between_zero_and_hundred():
         SLAPolicy(minimum_uptime=-1, minimum_penalty=1, maximum_penalty=5)
 
 
-# --- PartyPolicy.max_rounds -------------------------------------------------
+
 
 
 def test_max_rounds_defaults_to_ten():

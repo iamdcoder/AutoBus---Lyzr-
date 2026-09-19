@@ -1,18 +1,3 @@
-"""Engine-level edge cases for negotiation/engine.py that were not covered
-by test_negotiation.py or test_integration.py.
-
-Where possible these call NegotiationEngine's private methods directly
-(``_generate_with_revisions``, ``_project_to_joint_feasible_zone``,
-``same_terms``) rather than driving a full ``.run()`` loop — this is the
-same pattern test_negotiation.py already uses for
-``_project_to_joint_feasible_zone``, and it keeps each test focused on one
-decision point instead of depending on a whole negotiation's worth of
-mock-agent behavior lining up correctly.
-
-No test here configures ``LYZR_GUARDRAIL_URL``, so every ``NegotiationEngine``
-below uses the default ``LyzrGovernance()``'s local, offline fallback checks
-only — no network access is required or attempted.
-"""
 
 from models.policy import (
     DeliveryPolicy,
@@ -64,7 +49,7 @@ def make_proposal(round_number=1, **overrides):
     return NegotiationProposal(round_number=round_number, **data)
 
 
-# --- accept / walk-away branches in .run() ----------------------------
+
 
 
 class AcceptImmediatelyBuyer:
@@ -138,14 +123,10 @@ def test_supplier_walk_away_ends_negotiation_immediately():
     assert result.reason == "Supplier walked away."
 
 
-# --- accept with a self-referential (contextually invalid) accepted_offer ---
+
 
 
 class AcceptOwnSideBuyer:
-    """Round 1 counters normally; round 2 tries to ACCEPT with
-    accepted_offer="buyer" — a value that is valid on the model itself
-    (it's a legal enum member) but nonsensical here: the buyer should
-    only ever accept the *supplier's* terms."""
 
     def generate_proposal(self, round_number, supplier_offer=None, negotiation_context="", revision_feedback=""):
         if round_number == 1:
@@ -180,18 +161,18 @@ def test_buyer_accept_with_self_referential_accepted_offer_is_blocked():
     assert "invalid accepted_offer" in result.reason
 
 
-# --- accepting a proposal outside the accepting party's own authority -------
+
 
 
 def test_buyer_accepting_terms_outside_its_own_policy_is_blocked():
-    # A disjoint SLA-penalty band (buyer wants 1-2, supplier will only
-    # offer 4-5) means the arbiter's projection step cannot reconcile the
-    # two — there is no overlap to project into — so the supplier's
-    # policy-valid-for-itself offer legitimately stays outside the
-    # buyer's authority. Round 1 just gets the state machine going with
-    # ordinary counters (which don't match, since the penalty differs);
-    # round 2 has the buyer try to accept the still-unreconciled
-    # supplier offer from round 1.
+    
+    
+    
+    
+    
+    
+    
+    
     class Buyer:
         def generate_proposal(self, round_number, supplier_offer=None, negotiation_context="", revision_feedback=""):
             if round_number == 1:
@@ -229,7 +210,7 @@ def test_buyer_accepting_terms_outside_its_own_policy_is_blocked():
     assert "outside its authority" in result.reason
 
 
-# --- _generate_with_revisions: retry and feedback behavior ------------------
+
 
 
 class BlockedThenValidBuyer:
@@ -238,8 +219,8 @@ class BlockedThenValidBuyer:
 
     def generate_proposal(self, round_number, supplier_offer=None, negotiation_context="", revision_feedback=""):
         self.calls += 1
-        # First attempt violates the buyer's own price ceiling (110);
-        # the second attempt is well within policy.
+        
+        
         price = 500 if self.calls == 1 else 100
         return NegotiationProposal(
             round_number=round_number,
@@ -285,7 +266,7 @@ def test_generate_with_revisions_gives_up_after_exhausting_attempts():
     )
 
     assert result is None
-    # max_revisions_per_round defaults to 2, i.e. 3 total attempts.
+    
     assert agent.calls == engine.max_revisions_per_round + 1
 
 
@@ -336,9 +317,9 @@ class InjectingThenCleanBuyer:
 
 
 def test_generate_with_revisions_recovers_after_a_governance_block():
-    # This exercises the deterministic local governance fallback (no
-    # LYZR_GUARDRAIL_URL configured), which scans the proposal payload
-    # for prompt-injection markers before the guardrail engine ever sees it.
+    
+    
+    
     engine = NegotiationEngine(make_buyer_policy(), make_supplier_policy(), None, None)
     agent = InjectingThenCleanBuyer()
 
@@ -352,7 +333,7 @@ def test_generate_with_revisions_recovers_after_a_governance_block():
     assert agent.calls == 2
 
 
-# --- _project_to_joint_feasible_zone: buyer-side price + non-price dims -----
+
 
 
 def test_projection_raises_buyer_price_up_to_supplier_floor():
@@ -360,7 +341,7 @@ def test_projection_raises_buyer_price_up_to_supplier_floor():
     supplier_policy = make_supplier_policy(price=PricePolicy(target=110, minimum=105))
     engine = NegotiationEngine(buyer_policy, supplier_policy, None, None)
 
-    proposal = make_proposal(price=95)  # below supplier's floor of 105
+    proposal = make_proposal(price=95)  
     projected = engine._project_to_joint_feasible_zone(proposal, "buyer")
 
     assert projected.price == 105
@@ -382,11 +363,11 @@ def test_projection_clamps_delivery_payment_and_sla_into_the_shared_band():
     engine = NegotiationEngine(buyer_policy, supplier_policy, None, None)
 
     proposal = make_proposal(
-        price=100,  # unaffected: no supplier minimum to project against
-        delivery_days=38,  # exceeds shared max of min(40, 35) = 35
-        payment_days=25,  # below shared min of max(30, 20) = 30
-        sla_penalty=5,  # outside shared band [max(1,2), min(3,6)] = [2, 3]
-        sla_uptime=90,  # below shared min of max(98, 95) = 98
+        price=100,  
+        delivery_days=38,  
+        payment_days=25,  
+        sla_penalty=5,  
+        sla_uptime=90,  
     )
     projected = engine._project_to_joint_feasible_zone(proposal, "buyer")
 
@@ -402,19 +383,19 @@ def test_projection_is_a_no_op_when_nothing_needs_adjusting():
     supplier_policy = make_supplier_policy()
     engine = NegotiationEngine(buyer_policy, supplier_policy, None, None)
 
-    # Every dimension here is already within its projectable bound: price
-    # is below the buyer's ceiling, delivery/payment/uptime sit inside the
-    # shared band, and the SLA-penalty bands don't overlap at all (buyer
-    # wants 1-2, supplier's default fixture wants 4-5) so that dimension
-    # is left untouched rather than "projected" — either way, nothing in
-    # this proposal should change.
+    
+    
+    
+    
+    
+    
     proposal = make_proposal(price=105, delivery_days=30, payment_days=45, sla_penalty=4, sla_uptime=98)
     projected = engine._project_to_joint_feasible_zone(proposal, "supplier")
 
     assert projected == proposal
 
 
-# --- same_terms static method ------------------------------------------------
+
 
 
 def test_same_terms_ignores_round_number_but_compares_every_commercial_field():

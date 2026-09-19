@@ -1,47 +1,3 @@
-"""Centralized, validated application configuration.
-
-Every environment variable the backend reads is declared here with an
-explicit type, default, and description, so a misconfigured deployment
-fails fast and legibly at startup instead of silently producing an empty
-string (or a crash from an unparsable number) deep inside a request
-handler. This module is purely additive: introducing it does not change
-any existing negotiation, guardrail, or governance behavior. Field
-defaults mirror the previous ``os.getenv(NAME, default)`` call sites
-exactly, so wiring a module over to ``Settings`` is a behavior-preserving
-refactor for every currently-used configuration value.
-
-One deliberate, narrow exception: ``LYZR_CHAT_TIMEOUT`` and
-``LYZR_GOVERNANCE_TIMEOUT`` are constrained to ``gt=0``. The previous
-``float(os.getenv(...))`` calls would have silently accepted a zero or
-negative timeout (a value that could never have produced a working
-request); this module rejects it at startup instead. This is the one
-place where "behavior-preserving" means "preserves every value that was
-ever meaningfully usable," not "byte-for-byte identical for every
-conceivable input."
-
-``get_settings()`` intentionally returns a *fresh* ``Settings()`` instance
-on every call rather than a cached singleton (e.g. via ``lru_cache``, a
-common pattern in FastAPI tutorials). Configuration in this project is
-legitimately dynamic within a single running process: the test suite uses
-``monkeypatch.setenv``/``delenv`` to exercise different configurations
-against the same interpreter, and both ``LyzrGovernance`` and the request
-handlers in ``main.py`` are expected to observe environment changes made
-after import time (e.g. via ``load_dotenv()`` or a redeployed secret).
-Caching would make the settings object stale the moment an environment
-variable changed. Constructing a small Pydantic model is cheap enough
-that re-reading ``os.environ`` per call has no meaningful cost here.
-
-``Settings`` deliberately does *not* let ``pydantic-settings`` read a
-``.env`` file on its own (no ``env_file`` in ``model_config``): this
-process already loads ``.env`` into ``os.environ`` once via
-``python-dotenv``'s ``load_dotenv()`` in ``main.py``, exactly like before
-this module existed. If ``Settings`` also parsed ``.env`` independently,
-a value a test had deliberately removed with ``monkeypatch.delenv(...)``
-could silently reappear from a developer's local ``.env`` file, which
-``os.getenv(...)`` alone never did. Reading only ``os.environ`` keeps
-``Settings`` a strict superset of the previous behavior: the exact same
-source, just validated and typed.
-"""
 
 from __future__ import annotations
 
@@ -50,13 +6,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Typed, validated view over every environment variable AutoBus reads."""
 
     model_config = SettingsConfigDict(
         extra="ignore",
     )
 
-    # --- Lyzr Agent API / SDK transport ---------------------------------
+    
     LYZR_API_KEY: str = Field(
         default="",
         description="Lyzr Agent API key. A credential, never an identifier: "
@@ -84,11 +39,11 @@ class Settings(BaseSettings):
         description="Lyzr user id associated with agent sessions.",
     )
 
-    # --- Studio agent identifiers (identifiers, not credentials) --------
+    
     BUYER_AGENT_ID: str = Field(default="", description="Lyzr Studio agent id for the Buyer agent.")
     SUPPLIER_AGENT_ID: str = Field(default="", description="Lyzr Studio agent id for the Supplier agent.")
 
-    # --- Responsible AI / governance -------------------------------------
+    
     LYZR_GUARDRAIL_URL: str = Field(
         default="",
         description="Optional Lyzr Responsible AI custom guardrail endpoint. "
@@ -114,7 +69,7 @@ class Settings(BaseSettings):
         description="'1' verifies live Studio agent feature flags when reporting /api/lyzr/status.",
     )
 
-    # --- AIMS-compatible audit export ------------------------------------
+    
     LYZR_AIMS_WEBHOOK_URL: str = Field(
         default="",
         description="Optional external AIMS-compatible event sink. Falls back to a "
@@ -126,17 +81,17 @@ class Settings(BaseSettings):
         description="Local fallback path for AIMS-envelope events when no external sink is configured.",
     )
 
-    # --- Deployment / API surface ----------------------------------------
+    
     CORS_ORIGINS: str = Field(
         default="*",
         description="Comma-separated list of allowed CORS origins, or '*' for all.",
     )
     PUBLIC_BASE_URL: str = Field(default="", description="Public base URL of this deployment (display only).")
 
-    # --- Convenience accessors --------------------------------------------
-    # These centralize parsing that previously lived inline at each call
-    # site (e.g. `os.getenv("LYZR_USE_SDK", "1") == "1"`), so every caller
-    # agrees on the same interpretation of a raw string value.
+    
+    
+    
+    
 
     @property
     def sdk_preferred(self) -> bool:
@@ -172,11 +127,5 @@ class Settings(BaseSettings):
 
 
 def get_settings() -> Settings:
-    """Return a freshly constructed, validated ``Settings`` instance.
-
-    Deliberately uncached (see module docstring) so callers always observe
-    the current process environment — matching the semantics of the
-    ``os.getenv(...)`` calls this module is designed to replace.
-    """
 
     return Settings()

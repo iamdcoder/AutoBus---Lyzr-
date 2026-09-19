@@ -57,12 +57,6 @@ def calculate_concession(
     current: NegotiationProposal,
     role: str,
 ) -> dict:
-    """
-    Calculate how much an agent moved from its previous proposal.
-
-    The values are normalized so they can be displayed in the UI
-    and compared across different negotiation issues.
-    """
 
     price_delta = current.price - previous.price
 

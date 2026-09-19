@@ -1,4 +1,3 @@
-"""Private-memory boundary for the Buyer and Supplier agents."""
 
 from __future__ import annotations
 
@@ -18,7 +17,6 @@ class AgentEnvironment:
         return build_redaction_snapshot(self.private_policy)
 
     def visible_context(self) -> dict[str, Any]:
-        """Context intentionally excludes reservation prices, BATNA and raw policy."""
         return {
             "actor": self.actor,
             "session_id": self.session_id,
@@ -27,7 +25,6 @@ class AgentEnvironment:
         }
 
     def allowed_shared_fields(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Return only fields safe to expose outside the actor's private context."""
         forbidden = {
             "batna",
             "minimum_price",

@@ -1,13 +1,3 @@
-"""Tests for the centralized, validated configuration module.
-
-These exercise defaults, environment-variable overrides, and the derived
-convenience properties on ``Settings``. Every test constructs its own
-``Settings()`` (via ``get_settings()``) after adjusting the environment
-with ``monkeypatch``, matching the pattern already used for
-``LyzrGovernance`` in ``test_governance.py`` — this keeps the settings
-object honest about live environment changes rather than caching a stale
-snapshot.
-"""
 
 import pytest
 
@@ -76,8 +66,8 @@ def test_get_settings_is_not_cached_and_reflects_live_changes(monkeypatch):
     second = get_settings()
     assert second.BUYER_AGENT_ID == "buyer-123"
 
-    # The first instance is a snapshot in time and is not retroactively
-    # mutated; a fresh call is required to observe the change.
+    
+    
     assert first.BUYER_AGENT_ID == ""
 
 
@@ -88,10 +78,10 @@ def test_sdk_preferred_matches_exact_string_comparison(monkeypatch):
     monkeypatch.setenv("LYZR_USE_SDK", "0")
     assert get_settings().sdk_preferred is False
 
-    # Historical behavior: only the exact string "1" counts as enabled,
-    # so an unexpected truthy-looking value like "true" is treated the
-    # same as "off" — preserved here rather than "improved" so behavior
-    # does not silently change for existing deployments.
+    
+    
+    
+    
     monkeypatch.setenv("LYZR_USE_SDK", "true")
     assert get_settings().sdk_preferred is False
 

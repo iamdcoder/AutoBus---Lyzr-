@@ -7,7 +7,6 @@ import requests
 
 
 class LyzrClient:
-    """Agent inference adapter: Lyzr ADK first, documented Agent API fallback."""
 
     def __init__(self):
         self.base_url = os.getenv("LYZR_BASE_URL", "https://agent-prod.studio.lyzr.ai").rstrip("/")

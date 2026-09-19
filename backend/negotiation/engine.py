@@ -67,9 +67,9 @@ class NegotiationEngine:
 
                            
 
-        # Reject impossible negotiations before invoking either agent. This
-        # keeps the engine deterministic and avoids spending model calls when
-        # the two private price envelopes have no overlap.
+        
+        
+        
         if not price_is_feasible(
             self.buyer_policy,
             self.supplier_policy,
@@ -1048,12 +1048,6 @@ class NegotiationEngine:
         proposal: NegotiationProposal,
         role: str,
     ) -> NegotiationProposal:
-        """Project an otherwise policy-valid LLM proposal toward the joint feasible zone.
-
-        This is an arbiter step, not a policy concession: private policies remain
-        authoritative, while values are minimally adjusted when the proposal is
-        outside the counterparty's hard boundary but a feasible overlap exists.
-        """
         values = proposal.model_copy(deep=True)
 
         buyer = self.buyer_policy
@@ -1068,9 +1062,9 @@ class NegotiationEngine:
             if buyer_max is not None and values.price > buyer_max and (supplier_min is None or buyer_max >= supplier_min):
                 values.price = buyer_max
 
-        # Project only values that sit outside the shared hard boundaries.
-        # This is deliberately a minimal arbiter adjustment: private policy
-        # remains authoritative, and no new concession is invented here.
+        
+        
+        
         shared_delivery_max = min(buyer.delivery.maximum_days, supplier.delivery.maximum_days)
         if values.delivery_days > shared_delivery_max:
             values.delivery_days = shared_delivery_max
@@ -1092,8 +1086,8 @@ class NegotiationEngine:
 
                       
 
-    # Acceptance checks are hard policy gates, not utility preferences. A
-    # proposal must satisfy every buyer constraint before it can be accepted.
+    
+    
     def proposal_is_acceptable_to_buyer(
         self,
         proposal,

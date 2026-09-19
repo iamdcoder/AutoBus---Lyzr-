@@ -1,21 +1,3 @@
-"""Additional coverage for governance/lyzr_governance.py and
-governance/environment.py, complementing test_governance.py.
-
-test_governance.py already covers the local-fallback check paths and the
-"external endpoint unreachable -> fail closed" behavior. This file adds:
-  * the `mode` property's four combinations,
-  * a mocked *successful* external guardrail response (the "allow" path,
-    which nothing previously exercised — only the unreachable-endpoint
-    fail-closed path was tested),
-  * both branches of `publish_event` (external sink success, and falling
-    back to the local outbox when the sink call raises),
-  * `build_redaction_snapshot` directly, and
-  * `AgentEnvironment.allowed_shared_fields`, which had no test at all.
-
-Every test that touches `requests.post` monkeypatches it rather than
-making a real network call, matching the pattern already used in
-test_lyzr_client.py.
-"""
 
 import json
 
@@ -35,7 +17,7 @@ def policy():
     )
 
 
-# --- mode property -------------------------------------------------------
+
 
 
 def test_mode_is_deterministic_fallback_with_nothing_configured(monkeypatch):
@@ -62,7 +44,7 @@ def test_mode_reports_both_when_fully_configured(monkeypatch):
     assert LyzrGovernance().mode == "lyzr_responsible_ai+lyzr_aims_sink"
 
 
-# --- external guardrail: the "allow" path -----------------------------------
+
 
 
 def test_configured_governance_allows_when_external_endpoint_approves(monkeypatch):
@@ -126,7 +108,7 @@ def test_configured_governance_includes_bearer_token_when_set(monkeypatch):
     assert calls["headers"]["authorization"] == "Bearer secret-token"
 
 
-# --- publish_event: external sink vs local outbox fallback ------------------
+
 
 
 def test_publish_event_succeeds_against_a_configured_sink(monkeypatch, tmp_path):
@@ -145,7 +127,7 @@ def test_publish_event_succeeds_against_a_configured_sink(monkeypatch, tmp_path)
     result = g.publish_event({"event_type": "agreement_reached", "negotiation_id": "NEG-1"})
 
     assert result == {"published": True, "source": "lyzr_aims_sink", "status_code": 202}
-    # Nothing should have been queued locally on a successful publish.
+    
     assert not (tmp_path / "unused_outbox.jsonl").exists()
 
 
@@ -172,7 +154,7 @@ def test_publish_event_falls_back_to_local_outbox_when_sink_raises(monkeypatch, 
     assert queued["event"]["negotiation_id"] == "NEG-1"
 
 
-# --- build_redaction_snapshot -------------------------------------------------
+
 
 
 def test_build_redaction_snapshot_never_exposes_reservation_data():
@@ -184,7 +166,7 @@ def test_build_redaction_snapshot_never_exposes_reservation_data():
     assert "maximum" not in snapshot["price"]
 
 
-# --- AgentEnvironment.allowed_shared_fields -----------------------------------
+
 
 
 def test_allowed_shared_fields_strips_every_forbidden_key():
